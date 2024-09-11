@@ -224,7 +224,7 @@ void treq_RequestRun(treq_RequestType *req) {
 
     DBG2(printf("url: [%s]", Tcl_GetString(req->url)));
     safe_curl_easy_setopt(CURLOPT_URL, Tcl_GetString(req->url));
-/*
+
     if (req->data_form != NULL) {
 
         DBG2(printf("add form data..."));
@@ -255,7 +255,7 @@ void treq_RequestRun(treq_RequestType *req) {
         safe_curl_easy_setopt(CURLOPT_MIMEPOST, req->curl_mime);
 
     }
-*/
+
     switch (req->method) {
     case TREQ_METHOD_HEAD:
         safe_curl_easy_setopt(CURLOPT_HTTPGET, 1L);
