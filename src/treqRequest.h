@@ -51,7 +51,7 @@ struct treq_RequestType {
     treq_RequestMethodType method;
     Tcl_Obj *custom_method;
 
-    int noredirect;
+    int allow_redirects;
     int verbose;
 
     // Output parameters

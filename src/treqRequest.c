@@ -225,6 +225,38 @@ void treq_RequestRun(treq_RequestType *req) {
     DBG2(printf("url: [%s]", Tcl_GetString(req->url)));
     safe_curl_easy_setopt(CURLOPT_URL, Tcl_GetString(req->url));
 
+    switch (req->method) {
+    case TREQ_METHOD_HEAD:
+        DBG2(printf("use method %s", "HEAD"));
+        safe_curl_easy_setopt(CURLOPT_HTTPGET, 1L);
+        safe_curl_easy_setopt(CURLOPT_NOBODY, 1L);
+        break;
+    case TREQ_METHOD_GET:
+        DBG2(printf("use method %s", "GET"));
+        safe_curl_easy_setopt(CURLOPT_HTTPGET, 1L);
+        break;
+    case TREQ_METHOD_POST:
+        DBG2(printf("use method %s", "POST"));
+        safe_curl_easy_setopt(CURLOPT_POST, 1L);
+        break;
+    case TREQ_METHOD_PUT:
+        DBG2(printf("use method %s", "PUT"));
+        safe_curl_easy_setopt(CURLOPT_UPLOAD, 1L);
+        break;
+    case TREQ_METHOD_PATCH:
+        DBG2(printf("use method %s", "PATCH"));
+        safe_curl_easy_setopt(CURLOPT_CUSTOMREQUEST, "PATCH");
+        break;
+    case TREQ_METHOD_DELETE:
+        DBG2(printf("use method %s", "DELETE"));
+        safe_curl_easy_setopt(CURLOPT_CUSTOMREQUEST, "DELETE");
+        break;
+    case TREQ_METHOD_CUSTOM:
+        DBG2(printf("use custom method [%s]", Tcl_GetString(req->custom_method)));
+        safe_curl_easy_setopt(CURLOPT_CUSTOMREQUEST, Tcl_GetString(req->custom_method));
+        break;
+    }
+
     if (req->data_form != NULL) {
 
         DBG2(printf("add form data..."));
@@ -256,32 +288,7 @@ void treq_RequestRun(treq_RequestType *req) {
 
     }
 
-    switch (req->method) {
-    case TREQ_METHOD_HEAD:
-        safe_curl_easy_setopt(CURLOPT_HTTPGET, 1L);
-        safe_curl_easy_setopt(CURLOPT_NOBODY, 1L);
-        break;
-    case TREQ_METHOD_GET:
-        safe_curl_easy_setopt(CURLOPT_HTTPGET, 1L);
-        break;
-    case TREQ_METHOD_POST:
-        safe_curl_easy_setopt(CURLOPT_POST, 1L);
-        break;
-    case TREQ_METHOD_PUT:
-        safe_curl_easy_setopt(CURLOPT_UPLOAD, 1L);
-        break;
-    case TREQ_METHOD_PATCH:
-        safe_curl_easy_setopt(CURLOPT_CUSTOMREQUEST, "PATCH");
-        break;
-    case TREQ_METHOD_DELETE:
-        safe_curl_easy_setopt(CURLOPT_CUSTOMREQUEST, "DELETE");
-        break;
-    case TREQ_METHOD_CUSTOM:
-        safe_curl_easy_setopt(CURLOPT_CUSTOMREQUEST, Tcl_GetString(req->custom_method));
-        break;
-    }
-
-    safe_curl_easy_setopt(CURLOPT_FOLLOWLOCATION, (req->noredirect ? 0L : 1L));
+    safe_curl_easy_setopt(CURLOPT_FOLLOWLOCATION, (req->allow_redirects ? 1L : 0L));
     safe_curl_easy_setopt(CURLOPT_VERBOSE, (req->verbose ? 1L : 0L));
 
     if (req->headers != NULL) {
@@ -354,6 +361,8 @@ treq_RequestType *treq_RequestInit(void) {
     // Set a callback to save output data
     curl_easy_setopt(req->curl_easy, CURLOPT_WRITEFUNCTION, treq_write_callback);
     curl_easy_setopt(req->curl_easy, CURLOPT_WRITEDATA, (void *)req);
+
+    req->allow_redirects = 1;
 
     req->state = TREQ_REQUEST_CREATED;
 

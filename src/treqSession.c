@@ -32,11 +32,6 @@ treq_SessionType *treq_SessionInit(void) {
         goto error;
     }
 
-    ses->request_template = treq_RequestInit();
-    if (ses->request_template == NULL) {
-        goto error;
-    }
-
     curl_share_setopt(ses->curl_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
     curl_share_setopt(ses->curl_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
     curl_share_setopt(ses->curl_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
@@ -63,17 +58,17 @@ treq_RequestType *treq_SessionRequestInit(treq_SessionType *ses) {
         return NULL;
     }
 
-    if (ses->request_template->headers != NULL) {
-        req->headers = ses->request_template->headers;
+    if (ses->headers != NULL) {
+        req->headers = ses->headers;
         Tcl_IncrRefCount(req->headers);
     }
 
-    if (ses->request_template->noredirect) {
-        req->noredirect = ses->request_template->noredirect;
+    if (ses->allow_redirects != -1) {
+        req->allow_redirects = ses->allow_redirects;
     }
 
-    if (ses->request_template->verbose) {
-        req->verbose = ses->request_template->verbose;
+    if (ses->verbose != -1) {
+        req->verbose = ses->verbose;
     }
 
     req->session = ses;
@@ -168,8 +163,8 @@ void treq_SessionFree(treq_SessionType *ses) {
         curl_share_cleanup(ses->curl_share);
     }
 
-    if (ses->request_template != NULL) {
-        treq_RequestFree(ses->request_template);
+    if (ses->headers != NULL) {
+        Tcl_DecrRefCount(ses->headers);
     }
 
     ckfree(ses);

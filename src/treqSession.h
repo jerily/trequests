@@ -15,7 +15,10 @@ struct treq_SessionType {
     Tcl_Command cmd_token;
 
     CURLSH *curl_share;
-    treq_RequestType *request_template;
+
+    Tcl_Obj *headers;
+    int allow_redirects;
+    int verbose;
 
     treq_SessionRequestsListType *req_list_first;
     treq_SessionRequestsListType *req_list_last;
