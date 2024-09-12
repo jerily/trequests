@@ -369,13 +369,27 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
         return TCL_ERROR;
     }
 
-    static const char *const commands[] = {
-        "text", "content", "error", "headers", "header", "encoding",
-        "status_code", "state",
-        "destroy",
-        NULL
+    static const struct {
+        const char *name;
+        treq_RequestGetterProc *proc;
+        int arg_min;
+        int arg_max;
+        const char *arg_help;
+    } commands[] = {
+        { "text",        treq_RequestGetText,       2, 2, NULL         },
+        { "content",     treq_RequestGetContent,    2, 2, NULL         },
+        { "error",       treq_RequestGetError,      2, 2, NULL         },
+        { "headers",     treq_RequestGetHeaders,    2, 2, NULL         },
+        { "header",      NULL,                      3, 3, "header"     },
+        { "encoding",    treq_RequestGetEncoding,   2, 3, "?encoding?" },
+        { "status_code", treq_RequestGetStatusCode, 2, 2, NULL         },
+        { "state",       treq_RequestGetState,      2, 2, NULL         },
+        { "destroy",     NULL,                      2, 2, NULL         },
+        { NULL, NULL, 0, 0, NULL }
     };
 
+    // The elements of the enumeration must be arranged in the same order
+    // as in the commands struct
     enum commands {
         cmdText, cmdContent, cmdError, cmdHeaders, cmdHeader, cmdEncoding,
         cmdStatusCode, cmdState,
@@ -383,7 +397,15 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
     };
 
     int command;
-    if (Tcl_GetIndexFromObj(interp, objv[1], commands, "command", 0, &command) != TCL_OK) {
+    if (Tcl_GetIndexFromObjStruct(interp, objv[1], commands, sizeof(commands[0]), "command", 0, &command) != TCL_OK) {
+        return TCL_ERROR;
+    }
+
+    DBG2(printf("command [%s]", commands[command].name));
+
+    if ((objc < commands[command].arg_min) || (objc > commands[command].arg_max)) {
+        Tcl_WrongNumArgs(interp, 2, objv, commands[command].arg_help);
+        DBG2(printf("return: TCL_ERROR (wrong # args)"));
         return TCL_ERROR;
     }
 
@@ -392,56 +414,9 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
 
     switch ((enum commands) command) {
     case cmdDestroy:
-        DBG2(printf("destroy request"));
-        if (objc != 2) {
-            Tcl_WrongNumArgs(interp, 2, objv, "");
-            DBG2(printf("return: TCL_ERROR (wrong # args)"));
-            return TCL_ERROR;
-        }
         Tcl_DeleteCommandFromToken(request->interp, request->cmd_token);
         break;
-    case cmdContent:
-        DBG2(printf("get content"));
-        if (objc != 2) {
-            Tcl_WrongNumArgs(interp, 2, objv, "");
-            DBG2(printf("return: TCL_ERROR (wrong # args)"));
-            return TCL_ERROR;
-        }
-        result = treq_RequestGetContent(request);
-        break;
-    case cmdText:
-        DBG2(printf("get content"));
-        if (objc != 2) {
-            Tcl_WrongNumArgs(interp, 2, objv, "");
-            DBG2(printf("return: TCL_ERROR (wrong # args)"));
-            return TCL_ERROR;
-        }
-        result = treq_RequestGetText(request);
-        break;
-    case cmdError:
-        DBG2(printf("get error"));
-        if (objc != 2) {
-            Tcl_WrongNumArgs(interp, 2, objv, "");
-            DBG2(printf("return: TCL_ERROR (wrong # args)"));
-            return TCL_ERROR;
-        }
-        result = treq_RequestGetError(request);
-        break;
-    case cmdHeaders:
-        DBG2(printf("get headers"));
-        if (objc != 2) {
-            Tcl_WrongNumArgs(interp, 2, objv, "");
-            DBG2(printf("return: TCL_ERROR (wrong # args)"));
-            return TCL_ERROR;
-        }
-        result = treq_RequestGetHeaders(request);
-        break;
     case cmdHeader:
-        if (objc != 3) {
-            Tcl_WrongNumArgs(interp, 2, objv, "header");
-            DBG2(printf("return: TCL_ERROR (header, wrong # args)"));
-            return TCL_ERROR;
-        }
         DBG2(printf("get header: [%s]", Tcl_GetString(objv[2])));
         result = treq_RequestGetHeader(request, Tcl_GetString(objv[2]));
         if (result == NULL) {
@@ -451,11 +426,6 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
         }
         break;
     case cmdEncoding:
-        if (objc > 3) {
-            Tcl_WrongNumArgs(interp, 2, objv, "?encoding?");
-            DBG2(printf("return: TCL_ERROR (encoding, wrong # args)"));
-            return TCL_ERROR;
-        }
         if (objc > 2) {
             DBG2(printf("set encoding: [%s]", Tcl_GetString(objv[2])));
             Tcl_Encoding encoding = Tcl_GetEncoding(interp, Tcl_GetString(objv[2]));
@@ -465,25 +435,15 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
             }
             treq_RequestSetEncoding(request, encoding);
         }
-        result = treq_RequestGetEncoding(request);
+        result = commands[command].proc(request);
         break;
+    case cmdText:
+    case cmdContent:
+    case cmdError:
+    case cmdHeaders:
     case cmdStatusCode:
-        DBG2(printf("get status code"));
-        if (objc != 2) {
-            Tcl_WrongNumArgs(interp, 2, objv, "");
-            DBG2(printf("return: TCL_ERROR (wrong # args)"));
-            return TCL_ERROR;
-        }
-        result = treq_RequestGetStatusCode(request);
-        break;
     case cmdState:
-        DBG2(printf("get status code"));
-        if (objc != 2) {
-            Tcl_WrongNumArgs(interp, 2, objv, "");
-            DBG2(printf("return: TCL_ERROR (wrong # args)"));
-            return TCL_ERROR;
-        }
-        result = treq_RequestGetState(request);
+        result = commands[command].proc(request);
         break;
     }
 
