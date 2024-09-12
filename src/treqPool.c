@@ -6,13 +6,48 @@
 
 #include "treqPool.h"
 
+struct treq_PoolType {
+    CURLM *curl_multi;
+};
+
 typedef struct ThreadSpecificData {
 
-    CURLM *pool;
+    treq_PoolType *pool_default;
 
 } ThreadSpecificData;
 
 static Tcl_ThreadDataKey dataKey;
+
+treq_PoolType *treq_PoolInit(void) {
+
+    DBG2(printf("enter..."));
+
+    treq_PoolType *pool = ckalloc(sizeof(treq_PoolType));
+
+    pool->curl_multi = curl_multi_init();
+    if (pool->curl_multi == NULL) {
+        ckfree(pool);
+        DBG2(printf("return: ERROR (could not create a pool)"));
+        return NULL;
+    }
+
+    DBG2(printf("return: ok"));
+    return pool;
+
+}
+
+void treq_PoolFree(treq_PoolType *pool) {
+    DBG2(printf("enter..."));
+    curl_multi_cleanup(pool->curl_multi);
+    ckfree(pool);
+    DBG2(printf("return: ok"));
+}
+
+
+void treq_PoolAddRequest(void) {
+    DBG2(printf("enter..."));
+    DBG2(printf("return: ok"));
+}
 
 void treq_PoolThreadExitProc(void) {
 
@@ -20,10 +55,10 @@ void treq_PoolThreadExitProc(void) {
 
     ThreadSpecificData *tsdPtr = TCL_TSD_INIT(&dataKey);
 
-    if (tsdPtr->pool != NULL) {
+    if (tsdPtr->pool_default != NULL) {
         DBG2(printf("release pool"));
-        curl_multi_cleanup(tsdPtr->pool);
-        tsdPtr->pool = NULL;
+        treq_PoolFree(tsdPtr->pool_default);
+        tsdPtr->pool_default = NULL;
     }
 
     DBG2(printf("return: ok"));

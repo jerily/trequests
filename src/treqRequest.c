@@ -177,7 +177,7 @@ static size_t treq_write_callback(const char *ptr, size_t size, size_t nmemb, vo
     treq_RequestType *req = (treq_RequestType *)userdata;
     size = size * nmemb;
 
-    DBG2(printf("enter; existing size: %" TCL_SIZE_MODIFIER "d add size: %zu", req->content_size, size));
+    DBG2(printf("enter; existing buffer size: %" TCL_SIZE_MODIFIER "d; add chunk size: %zu", req->content_size, size));
 
     if (size > 0) {
 
@@ -328,7 +328,7 @@ void treq_RequestRun(treq_RequestType *req) {
     //req->curl_headers = curl_slist_append(req->curl_headers, "Expect:");
 
     DBG2(printf("run cURL request..."));
-    req->state = TREQ_REQUEST_STARTED;
+    req->state = TREQ_REQUEST_INPROGRESS;
     CURLcode res = curl_easy_perform(req->curl_easy);
 
     if (res == CURLE_OK) {

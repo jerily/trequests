@@ -28,6 +28,8 @@ typedef struct treq_RequestOptions {
     treq_optionListType data_form;
     treq_optionBooleanType verbose;
     treq_optionBooleanType allow_redirects;
+    int async;
+    int simple;
 } treq_RequestOptions;
 
 #define treq_InitRequestOptions() { \
@@ -35,6 +37,8 @@ typedef struct treq_RequestOptions {
     .data_form =       { "-data_from",       NULL, 0, 0 }, \
     .verbose =         { "-verbose",         -1, 0, NULL }, \
     .allow_redirects = { "-allow_redirects", -1, 0, NULL }, \
+    .async = 0, \
+    .simple = 0, \
 }
 
 #define treq_FreeRequestOptions(o) \
@@ -304,6 +308,14 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
         return TCL_ERROR;
     }
 
+    if (opt->async && opt->simple) {
+        SetResult("-async and -simple switches are incompatible with each other");
+        return TCL_ERROR;
+    }
+
+    DBG2(printf("option -simple: %s", (opt->simple ? "true" : "false")));
+    DBG2(printf("option -async: %s", (opt->async ? "true" : "false")));
+
     return TCL_OK;
 
 }
@@ -467,6 +479,8 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
         { TCL_ARGV_FUNC, "-data_form",       lappend_arg, &opt.data_form,       NULL, NULL },
         { TCL_ARGV_FUNC, "-allow_redirects", boolean_arg, &opt.allow_redirects, NULL, NULL },
         { TCL_ARGV_FUNC, "-verbose",         boolean_arg, &opt.verbose,         NULL, NULL },
+        { TCL_ARGV_CONSTANT, "-async",       INT2PTR(1),  &opt.async,           NULL, NULL },
+        { TCL_ARGV_CONSTANT, "-simple",      INT2PTR(1),  &opt.simple,          NULL, NULL },
         TCL_ARGV_TABLE_END
     };
 #pragma GCC diagnostic pop
@@ -524,6 +538,28 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
     }
 
     treq_RequestRun(request);
+
+    if (opt.simple) {
+
+        switch (request->state) {
+        case TREQ_REQUEST_DONE:
+            Tcl_SetObjResult(interp, treq_RequestGetText(request));
+            break;
+        case TREQ_REQUEST_ERROR:
+            Tcl_SetObjResult(interp, treq_RequestGetError(request));
+            rc = TCL_ERROR;
+            break;
+        case TREQ_REQUEST_CREATED:
+        case TREQ_REQUEST_INPROGRESS:
+            SetResult("request is in wrong state");
+            break;
+        }
+
+        treq_RequestFree(request);
+
+        goto done;
+
+    }
 
     request->interp = interp;
     request->cmd_token = treq_CreateObjCommand(interp, "::trequests::request::handler%p",

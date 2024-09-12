@@ -20,7 +20,7 @@ typedef enum {
 
 typedef enum {
     TREQ_REQUEST_CREATED,
-    TREQ_REQUEST_STARTED,
+    TREQ_REQUEST_INPROGRESS,
     TREQ_REQUEST_DONE,
     TREQ_REQUEST_ERROR
 } treq_RequestStateType;
@@ -29,6 +29,7 @@ struct treq_RequestType {
 
     Tcl_Interp *interp;
     Tcl_Command cmd_token;
+    treq_PoolType *pool;
 
     CURL *curl_easy;
 

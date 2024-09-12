@@ -86,6 +86,33 @@ typedef int Tcl_Size;
 #define TCL_TSD_INIT(keyPtr) \
     (ThreadSpecificData *)Tcl_GetThreadData((keyPtr), sizeof(ThreadSpecificData))
 
+typedef struct treq_LinkedListType {
+    void *item;
+    struct treq_LinkedListType *next;
+} treq_LinkedListType;
+
+#define treq_LinkedListInsert(ll,li) (li)->next = (ll); (ll) = (li)
+#define treq_LinkedListRemoveByItem(ll,i) \
+    { \
+        treq_LinkedListType *__prev = NULL; \
+        for (treq_LinkedListType *__cur = (ll); __cur != NULL; __prev = __cur, __cur = __cur->next) { \
+            if (__cur->item != (void *)(i)) continue; \
+            if (__prev == NULL) { (ll) = __cur->next; } else { __prev->next = __cur->next; } \
+            ckfree(__cur); \
+            break; \
+        } \
+    }
+#define treq_LinkedListNewItem(li,i) \
+    treq_LinkedListType *(li) = ckalloc(sizeof(treq_LinkedListType)); \
+    (li)->item = (void *)(i)
+#define treq_LinkedListInsertNewItem(ll,i) \
+    { \
+        treq_LinkedListNewItem(__tmpitem, i); \
+        treq_LinkedListInsert((ll), __tmpitem); \
+    }
+#define treq_LinkedListFree(ll) \
+    for (treq_LinkedListType *__cur; (ll) != NULL; __cur = (ll), (ll) = (ll)->next, ckfree(__cur))
+
 typedef struct treq_RequestType treq_RequestType;
 typedef struct treq_SessionType treq_SessionType;
 typedef struct treq_PoolType treq_PoolType;

@@ -20,8 +20,7 @@ struct treq_SessionType {
     int allow_redirects;
     int verbose;
 
-    treq_SessionRequestsListType *req_list_first;
-    treq_SessionRequestsListType *req_list_last;
+    treq_LinkedListType *requests;
 };
 
 #ifdef __cplusplus
