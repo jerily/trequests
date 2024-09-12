@@ -59,6 +59,8 @@ static int treq_RequestEventProc(Tcl_Event *evPtr, int flags) {
     int rc = Tcl_EvalObjv(req->interp, objc, objv, 0);
     DBG2(printf("return code is %s", (rc == TCL_OK ? "TCL_OK" : (rc == TCL_ERROR ? "TCL_ERROR" : "OTHER VALUE"))));
 
+    Tcl_DecrRefCount(cmd);
+
     // If we got something wrong, report it using background error handler
     if (rc != TCL_OK) {
         Tcl_BackgroundException(req->interp, rc);
