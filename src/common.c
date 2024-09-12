@@ -8,6 +8,61 @@
 // for isdigit() / isspace()
 #include <ctype.h>
 
+void treq_ExecuteTclCallback(Tcl_Interp *interp, Tcl_Obj *callback, Tcl_Size objc, Tcl_Obj **objv, int background_error) {
+
+    DBG2(printf("enter, objc: %" TCL_SIZE_MODIFIER "d", objc));
+
+    Tcl_Obj *cmd;
+
+    if (objc > 0) {
+
+        // Make a duplicate of callback, since we will be modifying it, by adding
+        // arguments to the end of it
+        cmd = Tcl_DuplicateObj(callback);
+        Tcl_IncrRefCount(cmd);
+
+        Tcl_Size length;
+        // We need to know the length of cmd to add list elements using Tcl_ListObjReplace()
+        Tcl_ListObjLength(NULL, cmd, &length);
+
+        // Append arguments to the callback command
+        Tcl_ListObjReplace(NULL, cmd, length, 0, objc, objv);
+
+    } else {
+        cmd = callback;
+    }
+
+    // Prepare objc/objv for Tcl_EvalObjv()
+    Tcl_ListObjGetElements(NULL, cmd, &objc, &objv);
+
+    // Save interp state
+    Tcl_Preserve(interp);
+    Tcl_InterpState state = Tcl_SaveInterpState(interp, TCL_OK);
+
+    // Execute the callback
+    DBG2(printf("run Tcl callback..."));
+    int rc = Tcl_EvalObjv(interp, objc, objv, 0);
+    DBG2(printf("return code is %s", (rc == TCL_OK ? "TCL_OK" : (rc == TCL_ERROR ? "TCL_ERROR" : "OTHER VALUE"))));
+
+    // Don't touch cmd if it the same object as callback
+    if (cmd != callback) {
+        Tcl_DecrRefCount(cmd);
+    }
+
+    // If we got something wrong, report it using background error handler
+    if (background_error && rc != TCL_OK) {
+        Tcl_BackgroundException(interp, rc);
+    }
+
+    // Restore interp state
+    Tcl_RestoreInterpState(interp, state);
+    Tcl_Release(interp);
+
+    DBG2(printf("return: ok"));
+
+}
+
+
 Tcl_Obj *treq_ConvertCharsetToEncoding(Tcl_Obj *charset) {
 
     DBG2(printf("enter, charset: [%s]", Tcl_GetString(charset)));

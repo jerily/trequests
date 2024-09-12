@@ -40,6 +40,7 @@ typedef struct treq_RequestOptions {
     treq_optionBooleanType verbose;
     treq_optionBooleanType allow_redirects;
     treq_optionObjectType callback;
+    treq_optionObjectType callback_debug;
     int async;
     int simple;
 } treq_RequestOptions;
@@ -50,6 +51,7 @@ typedef struct treq_RequestOptions {
     .verbose =         { "-verbose",         -1, 0, NULL }, \
     .allow_redirects = { "-allow_redirects", -1, 0, NULL }, \
     .callback =        { "-callback",        -1, NULL }, \
+    .callback_debug =  { "-callback_debug",  -1, NULL }, \
     .async = 0, \
     .simple = 0, \
 }
@@ -336,11 +338,12 @@ static int treq_ValidateOptionObjectList(Tcl_Interp *interp, treq_optionObjectTy
 
 static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
 
-    if (treq_ValidateOptionListOfDicts(interp, &opt->headers) != TCL_OK      ||
-        treq_ValidateOptionListOfDicts(interp, &opt->data_form) != TCL_OK    ||
-        treq_ValidateOptionBoolean(interp, &opt->verbose) != TCL_OK          ||
-        treq_ValidateOptionBoolean(interp, &opt->allow_redirects) != TCL_OK  ||
-        treq_ValidateOptionObjectList(interp, &opt->callback) != TCL_OK)
+    if (treq_ValidateOptionListOfDicts(interp, &opt->headers) != TCL_OK        ||
+        treq_ValidateOptionListOfDicts(interp, &opt->data_form) != TCL_OK      ||
+        treq_ValidateOptionBoolean(interp, &opt->verbose) != TCL_OK            ||
+        treq_ValidateOptionBoolean(interp, &opt->allow_redirects) != TCL_OK    ||
+        treq_ValidateOptionObjectList(interp, &opt->callback) != TCL_OK        ||
+        treq_ValidateOptionObjectList(interp, &opt->callback_debug) != TCL_OK)
     {
         return TCL_ERROR;
     }
@@ -488,6 +491,7 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
         { TCL_ARGV_CONSTANT, "-async",       INT2PTR(1),  &opt.async,           NULL, NULL },
         { TCL_ARGV_CONSTANT, "-simple",      INT2PTR(1),  &opt.simple,          NULL, NULL },
         { TCL_ARGV_FUNC, "-callback",        object_arg,  &opt.callback,        NULL, NULL },
+        { TCL_ARGV_FUNC, "-callback_debug",  object_arg,  &opt.callback_debug,  NULL, NULL },
         TCL_ARGV_TABLE_END
     };
 #pragma GCC diagnostic pop
@@ -529,6 +533,14 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
         Tcl_IncrRefCount(request->callback);
     }
 
+    if (opt.callback_debug.value != NULL) {
+        if (request->callback_debug != NULL) {
+            Tcl_DecrRefCount(request->callback_debug);
+        }
+        request->callback_debug = opt.callback_debug.value;
+        Tcl_IncrRefCount(request->callback_debug);
+    }
+
     if (opt.data_form.value != NULL) {
         request->data_form = opt.data_form.value;
         Tcl_IncrRefCount(request->data_form);
@@ -554,6 +566,8 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
 
     request->async = opt.async;
 
+    request->interp = interp;
+
     treq_RequestRun(request);
 
     if (opt.simple) {
@@ -578,7 +592,6 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
 
     }
 
-    request->interp = interp;
     request->cmd_token = treq_CreateObjCommand(interp, "::trequests::request::handler%p",
         treq_RequestHandleCmd, (ClientData)request, treq_RequestHandleDelete);
 
@@ -719,6 +732,7 @@ static int treq_SessionCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
         { TCL_ARGV_FUNC, "-allow_redirects", boolean_arg, &opt.allow_redirects, NULL, NULL },
         { TCL_ARGV_FUNC, "-verbose",         boolean_arg, &opt.verbose,         NULL, NULL },
         { TCL_ARGV_FUNC, "-callback",        object_arg,  &opt.callback,        NULL, NULL },
+        { TCL_ARGV_FUNC, "-callback_debug",  object_arg,  &opt.callback_debug,  NULL, NULL },
         TCL_ARGV_TABLE_END
     };
 #pragma GCC diagnostic pop
@@ -749,6 +763,11 @@ static int treq_SessionCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
     if (opt.callback.value != NULL) {
         session->callback = opt.callback.value;
         Tcl_IncrRefCount(session->callback);
+    }
+
+    if (opt.callback_debug.value != NULL) {
+        session->callback_debug = opt.callback_debug.value;
+        Tcl_IncrRefCount(session->callback_debug);
     }
 
     session->allow_redirects = opt.allow_redirects.value;

@@ -33,42 +33,7 @@ static int treq_RequestEventProc(Tcl_Event *evPtr, int flags) {
 
     req->callback_event = NULL;
 
-    Tcl_Size objc;
-    Tcl_Obj **objv;
-
-    // Make the callback duplicate, since we will be modifying it, by adding
-    // request command to the end of it
-    Tcl_Obj *cmd = Tcl_DuplicateObj(req->callback);
-    Tcl_IncrRefCount(cmd);
-
-    // We need to know the length of cmd to add a list element using Tcl_ListObjReplace()
-    Tcl_ListObjLength(NULL, cmd, &objc);
-
-    // Append request command name to the callback command
-    Tcl_ListObjReplace(NULL, cmd, objc, 0, 1, &req->cmd_name);
-
-    // Prepare objc/objv for Tcl_EvalObjv()
-    Tcl_ListObjGetElements(NULL, cmd, &objc, &objv);
-
-    // Save interp state
-    Tcl_Preserve(req->interp);
-    Tcl_InterpState state = Tcl_SaveInterpState(req->interp, TCL_OK);
-
-    // Execute the callback
-    DBG2(printf("run Tcl callback..."));
-    int rc = Tcl_EvalObjv(req->interp, objc, objv, 0);
-    DBG2(printf("return code is %s", (rc == TCL_OK ? "TCL_OK" : (rc == TCL_ERROR ? "TCL_ERROR" : "OTHER VALUE"))));
-
-    Tcl_DecrRefCount(cmd);
-
-    // If we got something wrong, report it using background error handler
-    if (rc != TCL_OK) {
-        Tcl_BackgroundException(req->interp, rc);
-    }
-
-    // Restore interp state
-    Tcl_RestoreInterpState(req->interp, state);
-    Tcl_Release(req->interp);
+    treq_ExecuteTclCallback(req->interp, req->callback, 1, &req->cmd_name, 1);
 
     DBG2(printf("return: ok"));
     return 1;
@@ -307,6 +272,116 @@ Tcl_Obj *treq_RequestGetState(treq_RequestType *req) {
 
 }
 
+// treq_debug_dump & treq_debug_callback are from curl examples
+
+static void treq_debug_dump(const char *text, FILE *stream, unsigned char *ptr, size_t size) {
+    size_t i;
+    size_t c;
+    unsigned int width = 0x10;
+
+    fprintf(stream, "%s, %10.10ld bytes (0x%8.8lx)\n", text, (long)size, (long)size);
+
+    for(i = 0; i < size; i += width) {
+        fprintf(stream, "%4.4lx: ", (long)i);
+
+        /* show hex to the left */
+        for(c = 0; c < width; c++) {
+            if(i + c < size)
+                fprintf(stream, "%02x ", ptr[i + c]);
+            else
+                fputs("   ", stream);
+        }
+
+        /* show data on the right */
+        for(c = 0; (c < width) && (i + c < size); c++) {
+            char x = (ptr[i + c] >= 0x20 && ptr[i + c] < 0x80) ? ptr[i + c] : '.';
+            fputc(x, stream);
+        }
+
+        fputc('\n', stream); /* newline */
+    }
+}
+
+static int treq_debug_callback(CURL *handle, curl_infotype type, char *data, size_t size, void *clientp) {
+    const char *text;
+    UNUSED(handle);
+    treq_RequestType *req = (treq_RequestType *)clientp;
+
+    if (req->callback_debug == NULL) {
+        goto internalDebugOutput;
+    }
+
+    switch(type) {
+    case CURLINFO_TEXT:
+        text = "info";
+        break;
+    case CURLINFO_HEADER_OUT:
+        text = "header_out";
+        break;
+    case CURLINFO_HEADER_IN:
+        text = "header_in";
+        break;
+    case CURLINFO_DATA_OUT:
+        text = "data_out";
+        break;
+    case CURLINFO_DATA_IN:
+        text = "data_in";
+        break;
+    case CURLINFO_SSL_DATA_OUT:
+        text = "ssl_data_out";
+        break;
+    case CURLINFO_SSL_DATA_IN:
+        text = "ssl_data_in";
+        break;
+    case CURLINFO_END:
+        return 0;
+    }
+
+    Tcl_Obj *objv[3] = {
+        Tcl_NewStringObj(text, -1),
+        (type == CURLINFO_TEXT ? Tcl_NewStringObj(data, size) : Tcl_NewByteArrayObj((const unsigned char *)data, size)),
+        (req->cmd_name == NULL ? Tcl_NewObj() : req->cmd_name)
+    };
+
+    treq_ExecuteTclCallback(req->interp, req->callback_debug, 3, objv, 0);
+
+    goto done;
+
+internalDebugOutput:
+
+    switch(type) {
+    case CURLINFO_TEXT:
+        fputs("== Info: ", stderr);
+        fwrite(data, size, 1, stderr);
+        return 0;
+    case CURLINFO_HEADER_OUT:
+        text = "=> Send header";
+        break;
+    case CURLINFO_DATA_OUT:
+        text = "=> Send data";
+        break;
+    case CURLINFO_SSL_DATA_OUT:
+        text = "=> Send SSL data";
+        break;
+    case CURLINFO_HEADER_IN:
+        text = "<= Recv header";
+        break;
+    case CURLINFO_DATA_IN:
+        text = "<= Recv data";
+        break;
+    case CURLINFO_SSL_DATA_IN:
+        text = "<= Recv SSL data";
+        break;
+    case CURLINFO_END:
+        return 0;
+    }
+
+    treq_debug_dump(text, stderr, (unsigned char *)data, size);
+
+done:
+    return 0;
+}
+
 static size_t treq_write_callback(const char *ptr, size_t size, size_t nmemb, void *userdata) {
 
     treq_RequestType *req = (treq_RequestType *)userdata;
@@ -512,6 +587,10 @@ treq_RequestType *treq_RequestInit(void) {
     // This data will be used when we get a callback from curl and we need
     // to know the corresponding treq_RequestType struct
     curl_easy_setopt(req->curl_easy, CURLOPT_PRIVATE, (void *)req);
+    // Set our callback for debug messages
+    curl_easy_setopt(req->curl_easy, CURLOPT_DEBUGFUNCTION, treq_debug_callback);
+    curl_easy_setopt(req->curl_easy, CURLOPT_DEBUGDATA, (void *)req);
+
 
     req->allow_redirects = 1;
 
@@ -561,6 +640,9 @@ void treq_RequestFree(treq_RequestType *req) {
     }
     if (req->callback != NULL) {
         Tcl_DecrRefCount(req->callback);
+    }
+    if (req->callback_debug != NULL) {
+        Tcl_DecrRefCount(req->callback_debug);
     }
     if (req->custom_method != NULL) {
         Tcl_DecrRefCount(req->custom_method);

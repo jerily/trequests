@@ -62,6 +62,7 @@ struct treq_RequestType {
     treq_RequestEvent *callback_event;
     int async;
 
+    Tcl_Obj *callback_debug;
 
     // Output parameters
 

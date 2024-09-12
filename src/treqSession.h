@@ -20,6 +20,7 @@ struct treq_SessionType {
     int allow_redirects;
     int verbose;
     Tcl_Obj *callback;
+    Tcl_Obj *callback_debug;
 
     treq_LinkedListType *requests;
 };

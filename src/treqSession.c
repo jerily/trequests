@@ -63,6 +63,11 @@ treq_RequestType *treq_SessionRequestInit(treq_SessionType *ses) {
         Tcl_IncrRefCount(req->callback);
     }
 
+    if (ses->callback_debug != NULL) {
+        req->callback_debug = ses->callback_debug;
+        Tcl_IncrRefCount(req->callback_debug);
+    }
+
     if (ses->allow_redirects != -1) {
         req->allow_redirects = ses->allow_redirects;
     }

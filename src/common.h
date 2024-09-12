@@ -123,6 +123,7 @@ extern "C" {
 
 void treq_ParseContentType(const char *data, Tcl_Obj **type_ptr, Tcl_Obj **charset_ptr);
 Tcl_Obj *treq_ConvertCharsetToEncoding(Tcl_Obj *charset);
+void treq_ExecuteTclCallback(Tcl_Interp *interp, Tcl_Obj *callback, Tcl_Size objc, Tcl_Obj **objv, int background_error);
 
 #ifdef __cplusplus
 }
