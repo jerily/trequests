@@ -303,11 +303,14 @@ void treq_PoolRemoveRequest(treq_RequestType *req) {
     pool->active_connection_count--;
 
     if (req->state == TREQ_REQUEST_INPROGRESS) {
-        DBG2(printf("set request state as ERROR"));
-        req->state = TREQ_REQUEST_ERROR;
-        treq_RequestSetError(req, Tcl_NewStringObj("the request has been removed from async pool", -1));
-        // TODO: if there is a callback in the request, we need to make sure it is running,
-        // as we need to report the above error to that callback
+        if (Tcl_InterpDeleted(req->interp)) {
+            DBG2(printf("interp is deleted"));
+        } else {
+            DBG2(printf("set request state as ERROR"));
+            req->state = TREQ_REQUEST_ERROR;
+            treq_RequestSetError(req, Tcl_NewStringObj("the request has been removed from async pool", -1));
+            treq_RequestScheduleCallback(req);
+        }
     }
 
     DBG2(printf("return: ok"));

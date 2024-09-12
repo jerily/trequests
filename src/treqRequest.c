@@ -82,6 +82,11 @@ void treq_RequestScheduleCallback(treq_RequestType *req) {
         return;
     }
 
+    if (Tcl_InterpDeleted(req->interp)) {
+        DBG2(printf("return: ok (interp is deleted)"));
+        return;
+    }
+
     treq_RequestEvent *event = ckalloc(sizeof(treq_RequestEvent));
     event->header.proc = treq_RequestEventProc;
     event->request = req;
@@ -442,6 +447,7 @@ void treq_RequestRun(treq_RequestType *req) {
         if (treq_PoolAddRequest(req) != TCL_OK) {
             req->state = TREQ_REQUEST_ERROR;
             treq_RequestSetError(req, Tcl_NewStringObj("failed to add the request to the pool", -1));
+            treq_RequestScheduleCallback(req);
         }
 
     } else {

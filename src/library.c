@@ -585,9 +585,6 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
     request->cmd_name = Tcl_GetObjResult(interp);
     Tcl_IncrRefCount(request->cmd_name);
 
-    // TODO: If the request has a callback and is in an error state after creation,
-    // we should call that callback here since we no longer expect any events from it.
-
     goto done;
 
 error:
