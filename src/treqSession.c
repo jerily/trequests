@@ -58,6 +58,11 @@ treq_RequestType *treq_SessionRequestInit(treq_SessionType *ses) {
         Tcl_IncrRefCount(req->headers);
     }
 
+    if (ses->callback != NULL) {
+        req->callback = ses->callback;
+        Tcl_IncrRefCount(req->callback);
+    }
+
     if (ses->allow_redirects != -1) {
         req->allow_redirects = ses->allow_redirects;
     }
@@ -109,6 +114,10 @@ void treq_SessionFree(treq_SessionType *ses) {
 
     if (ses->headers != NULL) {
         Tcl_DecrRefCount(ses->headers);
+    }
+
+    if (ses->callback != NULL) {
+        Tcl_DecrRefCount(ses->callback);
     }
 
     ckfree(ses);

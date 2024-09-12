@@ -13,6 +13,8 @@ extern "C" {
 #endif
 
 void treq_PoolThreadExitProc(void);
+int treq_PoolAddRequest(treq_RequestType *req);
+void treq_PoolRemoveRequest(treq_RequestType *req);
 
 #ifdef __cplusplus
 }

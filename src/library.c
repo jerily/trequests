@@ -9,34 +9,47 @@
 #include "treqRequest.h"
 #include "treqPool.h"
 
+typedef struct treq_optionCommonType {
+    const char *name;
+    int is_missing;
+} treq_optionCommonType;
+
 typedef struct treq_optionListType {
     const char *name;
+    int is_missing;
     Tcl_Obj *value;
     Tcl_Size count;
-    int is_missing;
 } treq_optionListType;
 
 typedef struct treq_optionBooleanType {
     const char *name;
-    int value;
     int is_missing;
+    int value;
     Tcl_Obj *raw;
 } treq_optionBooleanType;
+
+typedef struct treq_optionObjectType {
+    const char *name;
+    int is_missing;
+    Tcl_Obj *value;
+} treq_optionObjectType;
 
 typedef struct treq_RequestOptions {
     treq_optionListType headers;
     treq_optionListType data_form;
     treq_optionBooleanType verbose;
     treq_optionBooleanType allow_redirects;
+    treq_optionObjectType callback;
     int async;
     int simple;
 } treq_RequestOptions;
 
 #define treq_InitRequestOptions() { \
-    .headers =         { "-headers",         NULL, 0, 0 }, \
-    .data_form =       { "-data_from",       NULL, 0, 0 }, \
+    .headers =         { "-headers",         -1, NULL, 0 }, \
+    .data_form =       { "-data_from",       -1, NULL, 0 }, \
     .verbose =         { "-verbose",         -1, 0, NULL }, \
     .allow_redirects = { "-allow_redirects", -1, 0, NULL }, \
+    .callback =        { "-callback",        -1, NULL }, \
     .async = 0, \
     .simple = 0, \
 }
@@ -62,6 +75,7 @@ static int lappend_arg(void *clientData, Tcl_Obj *objPtr, void *dstPtr) {
         } else {
             Tcl_ListObjAppendElement(NULL, option_list->value, objPtr);
         }
+        option_list->is_missing = 0;
     }
     return 1;
 }
@@ -72,22 +86,23 @@ static int boolean_arg (void *clientData, Tcl_Obj *objPtr, void *dstPtr) {
     if (objPtr == NULL) {
         option_boolean->is_missing = 1;
     } else {
+        option_boolean->is_missing = 0;
         option_boolean->raw = objPtr;
     }
     return 1;
 }
 
-/*
-static int copy_arg(void *clientData, Tcl_Obj *objPtr, void *dstPtr) {
+static int object_arg(void *clientData, Tcl_Obj *objPtr, void *dstPtr) {
     UNUSED(clientData);
+    treq_optionObjectType *option_object = (treq_optionObjectType *)dstPtr;
     if (objPtr == NULL) {
-        *((void **)dstPtr) = INT2PTR(1);
+        option_object->is_missing = 1;
     } else {
-        *((Tcl_Obj **)dstPtr) = objPtr;
+        option_object->is_missing = 0;
+        option_object->value = objPtr;
     }
     return 1;
 }
-*/
 
 static int treq_OptionListMergeDicts(Tcl_Interp *interp, treq_optionListType *option_list) {
 
@@ -233,23 +248,34 @@ static Tcl_Command treq_CreateObjCommand(Tcl_Interp *interp, const char *cmd_tem
     return Tcl_CreateObjCommand(interp, buf, proc, clientData, deleteProc);
 }
 
+static int treq_ValidateOptionCommon(Tcl_Interp *interp, treq_optionCommonType *data) {
 
-static int treq_ValidateOptionListOfDicts(Tcl_Interp *interp, treq_optionListType *data) {
+    if (data->is_missing == 0) {
+        return TCL_CONTINUE;
+    }
 
     // Do we have missing value for the option?
-    if (data->is_missing) {
+    if (data->is_missing == 1) {
         DBG2(printf("return: ERROR (no arg for %s)", data->name));
         Tcl_SetObjResult(interp, Tcl_ObjPrintf("\"%s\" option requires"
             " an additional argument", data->name));
         return TCL_ERROR;
     }
 
-    // Do we have any lists?
-    if (data->count == 0) {
-        // Return OK if not
-        DBG2(printf("option %s: <none>", data->name));
-        return TCL_OK;
+    DBG2(printf("option %s: <none>", data->name));
+    return TCL_OK;
+
+}
+
+#define VALIDATE_COMMON(d) \
+    { \
+        int __rc = treq_ValidateOptionCommon(interp, (treq_optionCommonType *)d); \
+        if (__rc != TCL_CONTINUE) return __rc; \
     }
+
+static int treq_ValidateOptionListOfDicts(Tcl_Interp *interp, treq_optionListType *data) {
+
+    VALIDATE_COMMON(data);
 
     if (treq_OptionListMergeDicts(interp, data) != TCL_OK) {
         DBG2(printf("return: ERROR (%s error: %s)", data->name, Tcl_GetStringResult(interp)));
@@ -270,20 +296,7 @@ static int treq_ValidateOptionListOfDicts(Tcl_Interp *interp, treq_optionListTyp
 
 static int treq_ValidateOptionBoolean(Tcl_Interp *interp, treq_optionBooleanType *data) {
 
-    // Do we have missing value for the option?
-    if (data->is_missing) {
-        DBG2(printf("return: ERROR (no arg for %s)", data->name));
-        Tcl_SetObjResult(interp, Tcl_ObjPrintf("\"%s\" option requires"
-            " an additional argument", data->name));
-        return TCL_ERROR;
-    }
-
-    // Is it defined?
-    if (data->raw == NULL) {
-        // Return OK is not
-        DBG2(printf("option %s: <default>", data->name));
-        return TCL_OK;
-    }
+    VALIDATE_COMMON(data);
 
     if (Tcl_GetBooleanFromObj(NULL, data->raw, &data->value) != TCL_OK) {
         DBG2(printf("return: ERROR (%s is not bool, but '%s')", data->name, Tcl_GetString(data->raw)));
@@ -298,12 +311,36 @@ static int treq_ValidateOptionBoolean(Tcl_Interp *interp, treq_optionBooleanType
 
 }
 
+static int treq_ValidateOptionObjectList(Tcl_Interp *interp, treq_optionObjectType *data) {
+
+    VALIDATE_COMMON(data);
+
+    Tcl_Size list_length;
+    if (Tcl_ListObjLength(interp, data->value, &list_length) != TCL_OK) {
+        DBG2(printf("return: ERROR (%s is not a list, but '%s')", data->name, Tcl_GetString(data->value)));
+        Tcl_SetObjResult(interp, Tcl_ObjPrintf("%s option is expected to be"
+            " a list, but got: %s", data->name, Tcl_GetStringResult(interp)));
+        return TCL_ERROR;
+    }
+
+    if (list_length == 0) {
+        DBG2(printf("option %s: <empty list>", data->name));
+        data->value = NULL;
+    } else {
+        DBG2(printf("option %s: [%s]", data->name, Tcl_GetString(data->value)));
+    }
+
+    return TCL_OK;
+
+}
+
 static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
 
     if (treq_ValidateOptionListOfDicts(interp, &opt->headers) != TCL_OK      ||
         treq_ValidateOptionListOfDicts(interp, &opt->data_form) != TCL_OK    ||
         treq_ValidateOptionBoolean(interp, &opt->verbose) != TCL_OK          ||
-        treq_ValidateOptionBoolean(interp, &opt->allow_redirects) != TCL_OK)
+        treq_ValidateOptionBoolean(interp, &opt->allow_redirects) != TCL_OK  ||
+        treq_ValidateOptionObjectList(interp, &opt->callback) != TCL_OK)
     {
         return TCL_ERROR;
     }
@@ -334,14 +371,14 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
 
     static const char *const commands[] = {
         "text", "content", "error", "headers", "header", "encoding",
-        "status_code",
+        "status_code", "state",
         "destroy",
         NULL
     };
 
     enum commands {
         cmdText, cmdContent, cmdError, cmdHeaders, cmdHeader, cmdEncoding,
-        cmdStatusCode,
+        cmdStatusCode, cmdState,
         cmdDestroy
     };
 
@@ -439,6 +476,15 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
         }
         result = treq_RequestGetStatusCode(request);
         break;
+    case cmdState:
+        DBG2(printf("get status code"));
+        if (objc != 2) {
+            Tcl_WrongNumArgs(interp, 2, objv, "");
+            DBG2(printf("return: TCL_ERROR (wrong # args)"));
+            return TCL_ERROR;
+        }
+        result = treq_RequestGetState(request);
+        break;
     }
 
     Tcl_SetObjResult(interp, (result == NULL ? Tcl_NewObj() : result));
@@ -481,6 +527,7 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
         { TCL_ARGV_FUNC, "-verbose",         boolean_arg, &opt.verbose,         NULL, NULL },
         { TCL_ARGV_CONSTANT, "-async",       INT2PTR(1),  &opt.async,           NULL, NULL },
         { TCL_ARGV_CONSTANT, "-simple",      INT2PTR(1),  &opt.simple,          NULL, NULL },
+        { TCL_ARGV_FUNC, "-callback",        object_arg,  &opt.callback,        NULL, NULL },
         TCL_ARGV_TABLE_END
     };
 #pragma GCC diagnostic pop
@@ -514,6 +561,14 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
         Tcl_IncrRefCount(request->headers);
     }
 
+    if (opt.async && opt.callback.value != NULL) {
+        if (request->callback != NULL) {
+            Tcl_DecrRefCount(request->callback);
+        }
+        request->callback = opt.callback.value;
+        Tcl_IncrRefCount(request->callback);
+    }
+
     if (opt.data_form.value != NULL) {
         request->data_form = opt.data_form.value;
         Tcl_IncrRefCount(request->data_form);
@@ -536,6 +591,8 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
     if (opt.verbose.value != -1) {
         request->verbose = opt.verbose.value;
     }
+
+    request->async = opt.async;
 
     treq_RequestRun(request);
 
@@ -564,6 +621,12 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
     request->interp = interp;
     request->cmd_token = treq_CreateObjCommand(interp, "::trequests::request::handler%p",
         treq_RequestHandleCmd, (ClientData)request, treq_RequestHandleDelete);
+
+    request->cmd_name = Tcl_GetObjResult(interp);
+    Tcl_IncrRefCount(request->cmd_name);
+
+    // TODO: If the request has a callback and is in an error state after creation,
+    // we should call that callback here since we no longer expect any events from it.
 
     goto done;
 
@@ -698,6 +761,7 @@ static int treq_SessionCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
         { TCL_ARGV_FUNC, "-headers",         lappend_arg, &opt.headers,         NULL, NULL },
         { TCL_ARGV_FUNC, "-allow_redirects", boolean_arg, &opt.allow_redirects, NULL, NULL },
         { TCL_ARGV_FUNC, "-verbose",         boolean_arg, &opt.verbose,         NULL, NULL },
+        { TCL_ARGV_FUNC, "-callback",        object_arg,  &opt.callback,        NULL, NULL },
         TCL_ARGV_TABLE_END
     };
 #pragma GCC diagnostic pop
@@ -723,6 +787,11 @@ static int treq_SessionCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
     if (opt.headers.value != NULL) {
         session->headers = treq_MergeDicts(NULL, opt.headers.value, 1);
         Tcl_IncrRefCount(session->headers);
+    }
+
+    if (opt.callback.value != NULL) {
+        session->callback = opt.callback.value;
+        Tcl_IncrRefCount(session->callback);
     }
 
     session->allow_redirects = opt.allow_redirects.value;

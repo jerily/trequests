@@ -6,6 +6,91 @@
 
 #include "treqRequest.h"
 #include "treqSession.h"
+#include "treqPool.h"
+
+typedef struct treq_RequestEvent {
+    Tcl_Event header;
+    treq_RequestType *request;
+} treq_RequestEvent;
+
+static Tcl_EventProc treq_RequestEventProc;
+
+static int treq_RequestEventProc(Tcl_Event *evPtr, int flags) {
+
+    // Ignore non-file events
+    if (!(flags & TCL_FILE_EVENTS)) {
+        return 0;
+    }
+
+    DBG2(printf("enter"));
+
+    treq_RequestType *req = ((treq_RequestEvent *)evPtr)->request;
+
+    if (req == NULL) {
+        DBG2(printf("return: ok (request has already been destroyed)"));
+        return 1;
+    }
+
+    req->callback_event = NULL;
+
+    Tcl_Size objc;
+    Tcl_Obj **objv;
+
+    // Make the callback duplicate, since we will be modifying it, by adding
+    // request command to the end of it
+    Tcl_Obj *cmd = Tcl_DuplicateObj(req->callback);
+    Tcl_IncrRefCount(cmd);
+
+    // We need to know the length of cmd to add a list element using Tcl_ListObjReplace()
+    Tcl_ListObjLength(NULL, cmd, &objc);
+
+    // Append request command name to the callback command
+    Tcl_ListObjReplace(NULL, cmd, objc, 0, 1, &req->cmd_name);
+
+    // Prepare objc/objv for Tcl_EvalObjv()
+    Tcl_ListObjGetElements(NULL, cmd, &objc, &objv);
+
+    // Save interp state
+    Tcl_Preserve(req->interp);
+    Tcl_InterpState state = Tcl_SaveInterpState(req->interp, TCL_OK);
+
+    // Execute the callback
+    DBG2(printf("run Tcl callback..."));
+    int rc = Tcl_EvalObjv(req->interp, objc, objv, 0);
+    DBG2(printf("return code is %s", (rc == TCL_OK ? "TCL_OK" : (rc == TCL_ERROR ? "TCL_ERROR" : "OTHER VALUE"))));
+
+    // If we got something wrong, report it using background error handler
+    if (rc != TCL_OK) {
+        Tcl_BackgroundException(req->interp, rc);
+    }
+
+    // Restore interp state
+    Tcl_RestoreInterpState(req->interp, state);
+    Tcl_Release(req->interp);
+
+    DBG2(printf("return: ok"));
+    return 1;
+
+}
+
+void treq_RequestScheduleCallback(treq_RequestType *req) {
+
+    DBG2(printf("enter"));
+
+    if (req->callback == NULL) {
+        DBG2(printf("return: ok (request has no callback)"));
+        return;
+    }
+
+    treq_RequestEvent *event = ckalloc(sizeof(treq_RequestEvent));
+    event->header.proc = treq_RequestEventProc;
+    event->request = req;
+    req->callback_event = event;
+    Tcl_QueueEvent((Tcl_Event *)event, TCL_QUEUE_TAIL);
+
+    DBG2(printf("return: ok"));
+
+}
 
 static int treq_RequestUpdateContentType(treq_RequestType *req) {
     DBG2(printf("enter"));
@@ -159,7 +244,7 @@ Tcl_Obj *treq_RequestGetHeader(treq_RequestType *req, const char *header) {
 
 }
 
-static void treq_RequestSetError(treq_RequestType *req, Tcl_Obj *error) {
+void treq_RequestSetError(treq_RequestType *req, Tcl_Obj *error) {
 
     if (req->error != NULL) {
         Tcl_DecrRefCount(req->error);
@@ -169,6 +254,29 @@ static void treq_RequestSetError(treq_RequestType *req, Tcl_Obj *error) {
     req->error = error;
     Tcl_IncrRefCount(req->error);
     req->state = TREQ_REQUEST_ERROR;
+
+}
+
+Tcl_Obj *treq_RequestGetState(treq_RequestType *req) {
+
+    const char *state;
+
+    switch (req->state) {
+    case TREQ_REQUEST_CREATED:
+        state = "created";
+        break;
+    case TREQ_REQUEST_INPROGRESS:
+        state = "progress";
+        break;
+    case TREQ_REQUEST_DONE:
+        state = "done";
+        break;
+    case TREQ_REQUEST_ERROR:
+        state = "error";
+        break;
+    }
+
+    return Tcl_NewStringObj(state, -1);
 
 }
 
@@ -327,16 +435,28 @@ void treq_RequestRun(treq_RequestType *req) {
     //DBG2(printf("disable Expect: 100-continue"));
     //req->curl_headers = curl_slist_append(req->curl_headers, "Expect:");
 
-    DBG2(printf("run cURL request..."));
     req->state = TREQ_REQUEST_INPROGRESS;
-    CURLcode res = curl_easy_perform(req->curl_easy);
 
-    if (res == CURLE_OK) {
-        req->state = TREQ_REQUEST_DONE;
-        DBG2(printf("request: ok"));
+    if (req->async) {
+
+        if (treq_PoolAddRequest(req) != TCL_OK) {
+            req->state = TREQ_REQUEST_ERROR;
+            treq_RequestSetError(req, Tcl_NewStringObj("failed to add the request to the pool", -1));
+        }
+
     } else {
-        req->state = TREQ_REQUEST_ERROR;
-        DBG2(printf("request: ERROR (%s)", Tcl_GetString(treq_RequestGetError(req))));
+
+        DBG2(printf("run cURL request..."));
+        CURLcode res = curl_easy_perform(req->curl_easy);
+
+        if (res == CURLE_OK) {
+            req->state = TREQ_REQUEST_DONE;
+            DBG2(printf("request: ok"));
+        } else {
+            req->state = TREQ_REQUEST_ERROR;
+            DBG2(printf("request: ERROR (%s)", Tcl_GetString(treq_RequestGetError(req))));
+        }
+
     }
 
     DBG2(printf("return: ok"));
@@ -361,6 +481,9 @@ treq_RequestType *treq_RequestInit(void) {
     // Set a callback to save output data
     curl_easy_setopt(req->curl_easy, CURLOPT_WRITEFUNCTION, treq_write_callback);
     curl_easy_setopt(req->curl_easy, CURLOPT_WRITEDATA, (void *)req);
+    // This data will be used when we get a callback from curl and we need
+    // to know the corresponding treq_RequestType struct
+    curl_easy_setopt(req->curl_easy, CURLOPT_PRIVATE, (void *)req);
 
     req->allow_redirects = 1;
 
@@ -380,8 +503,19 @@ void treq_RequestFree(treq_RequestType *req) {
 
     DBG2(printf("enter; req: %p", (void *)req));
 
+    if (req->cmd_name != NULL) {
+        Tcl_DecrRefCount(req->cmd_name);
+    }
+
+    if (req->callback_event != NULL) {
+        req->callback_event->request = NULL;
+    }
+
     if (req->session != NULL) {
         treq_SessionRemoveRequest(req);
+    }
+    if (req->pool != NULL) {
+        treq_PoolRemoveRequest(req);
     }
 
     if (req->curl_easy != NULL) {
@@ -396,6 +530,9 @@ void treq_RequestFree(treq_RequestType *req) {
     }
     if (req->headers != NULL) {
         Tcl_DecrRefCount(req->headers);
+    }
+    if (req->callback != NULL) {
+        Tcl_DecrRefCount(req->callback);
     }
     if (req->custom_method != NULL) {
         Tcl_DecrRefCount(req->custom_method);

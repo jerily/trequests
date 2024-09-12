@@ -25,10 +25,13 @@ typedef enum {
     TREQ_REQUEST_ERROR
 } treq_RequestStateType;
 
+typedef struct treq_RequestEvent treq_RequestEvent;
+
 struct treq_RequestType {
 
     Tcl_Interp *interp;
     Tcl_Command cmd_token;
+    Tcl_Obj *cmd_name;
     treq_PoolType *pool;
 
     CURL *curl_easy;
@@ -55,6 +58,11 @@ struct treq_RequestType {
     int allow_redirects;
     int verbose;
 
+    Tcl_Obj *callback;
+    treq_RequestEvent *callback_event;
+    int async;
+
+
     // Output parameters
 
     // We don't use Tcl_Obj or DString to store the content, as we don't want
@@ -78,6 +86,7 @@ void treq_RequestFree(treq_RequestType *req);
 void treq_RequestRun(treq_RequestType *req);
 
 Tcl_Obj *treq_RequestGetError(treq_RequestType *req);
+void treq_RequestSetError(treq_RequestType *req, Tcl_Obj *error);
 Tcl_Obj *treq_RequestGetContent(treq_RequestType *req);
 Tcl_Obj *treq_RequestGetText(treq_RequestType *req);
 Tcl_Obj *treq_RequestGetHeaders(treq_RequestType *req);
@@ -85,6 +94,9 @@ Tcl_Obj *treq_RequestGetHeader(treq_RequestType *req, const char *header);
 Tcl_Obj *treq_RequestGetEncoding(treq_RequestType *req);
 void treq_RequestSetEncoding(treq_RequestType *req, Tcl_Encoding encoding);
 Tcl_Obj *treq_RequestGetStatusCode(treq_RequestType *req);
+Tcl_Obj *treq_RequestGetState(treq_RequestType *req);
+
+void treq_RequestScheduleCallback(treq_RequestType *req);
 
 #ifdef __cplusplus
 }
