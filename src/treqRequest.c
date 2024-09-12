@@ -223,13 +223,14 @@ Tcl_Obj *treq_RequestGetContent(treq_RequestType *req) {
 
 Tcl_Obj *treq_RequestGetHeaders(treq_RequestType *req) {
 
-    Tcl_Obj *result = Tcl_NewDictObj();
+    Tcl_Obj *result = Tcl_NewListObj(0, NULL);
 
     struct curl_header *prev = NULL;
     struct curl_header *h;
 
     while((h = curl_easy_nextheader(req->curl_easy, CURLH_HEADER, 0, prev))) {
-        Tcl_DictObjPut(NULL, result, Tcl_NewStringObj(h->name, -1), Tcl_NewStringObj(h->value, -1));
+        Tcl_ListObjAppendElement(NULL, result, Tcl_NewStringObj(h->name, -1));
+        Tcl_ListObjAppendElement(NULL, result, Tcl_NewStringObj(h->value, -1));
         prev = h;
     }
 
@@ -245,7 +246,26 @@ Tcl_Obj *treq_RequestGetHeader(treq_RequestType *req, const char *header) {
         return NULL;
     }
 
-    return Tcl_NewStringObj(h->value, -1);
+    DBG2(printf("add header #0:"));
+    DBG2(printf("  header name: [%s]", h->name));
+    DBG2(printf("  header value: [%s]", h->value));
+    DBG2(printf("  amount: [%zu]", h->amount));
+    DBG2(printf("  index: [%zu]", h->index));
+
+    Tcl_Obj *result = Tcl_NewListObj(0, NULL);
+    Tcl_ListObjAppendElement(NULL, result, Tcl_NewStringObj(h->value, -1));
+
+    size_t amount = h->amount;
+    for (size_t i = 1; i < amount; i++) {
+        if (curl_easy_header(req->curl_easy, header, i, CURLH_HEADER, -1, &h) != CURLHE_OK) {
+            DBG2(printf("ERROR: failed to get header #%zu", i));
+            continue;
+        }
+        DBG2(printf("add header #%zu", i));
+        Tcl_ListObjAppendElement(NULL, result, Tcl_NewStringObj(h->value, -1));
+    }
+
+    return result;
 
 }
 
