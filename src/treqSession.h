@@ -17,10 +17,13 @@ struct treq_SessionType {
     CURLSH *curl_share;
 
     Tcl_Obj *headers;
+    treq_RequestAuthType *auth;
     int allow_redirects;
     int verbose;
     Tcl_Obj *callback;
     Tcl_Obj *callback_debug;
+    Tcl_Obj *accept;
+    Tcl_Obj *content_type;
 
     treq_LinkedListType *requests;
 };

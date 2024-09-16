@@ -7,6 +7,7 @@
 #include "treqRequest.h"
 #include "treqSession.h"
 #include "treqPool.h"
+#include "treqRequestAuth.h"
 
 typedef struct treq_RequestEvent {
     Tcl_Event header;
@@ -467,7 +468,33 @@ void treq_RequestRun(treq_RequestType *req) {
         break;
     }
 
-    if (req->data_form != NULL) {
+    if (req->auth != NULL) {
+
+        if (req->auth->username != NULL) {
+            safe_curl_easy_setopt(CURLOPT_USERNAME, Tcl_GetString(req->auth->username));
+        }
+
+        if (req->auth->password != NULL) {
+            safe_curl_easy_setopt(CURLOPT_PASSWORD, Tcl_GetString(req->auth->password));
+        }
+
+        if (req->auth->token != NULL) {
+            safe_curl_easy_setopt(CURLOPT_XOAUTH2_BEARER, Tcl_GetString(req->auth->token));
+        }
+
+        if (req->auth->aws_sigv4 != NULL) {
+            safe_curl_easy_setopt(CURLOPT_AWS_SIGV4, Tcl_GetString(req->auth->aws_sigv4));
+        }
+
+        if (req->auth->scheme != -1) {
+            safe_curl_easy_setopt(CURLOPT_HTTPAUTH, req->auth->scheme);
+        } else if (req->auth->token != NULL) {
+            safe_curl_easy_setopt(CURLOPT_HTTPAUTH, CURLAUTH_BEARER | CURLAUTH_ONLY);
+        }
+
+    }
+
+    if (req->form != NULL) {
 
         DBG2(printf("add form data..."));
 
@@ -478,7 +505,7 @@ void treq_RequestRun(treq_RequestType *req) {
         Tcl_Obj *key, *value;
         int done;
 
-        Tcl_DictObjFirst(NULL, req->data_form, &search, &key, &value, &done);
+        Tcl_DictObjFirst(NULL, req->form, &search, &key, &value, &done);
         for (; !done ; Tcl_DictObjNext(&search, &key, &value, &done)) {
 
             field = curl_mime_addpart(req->curl_mime);
@@ -500,6 +527,14 @@ void treq_RequestRun(treq_RequestType *req) {
 
     safe_curl_easy_setopt(CURLOPT_FOLLOWLOCATION, (req->allow_redirects ? 1L : 0L));
     safe_curl_easy_setopt(CURLOPT_VERBOSE, (req->verbose ? 1L : 0L));
+
+    if (req->header_accept != NULL) {
+        req->curl_headers = curl_slist_append(req->curl_headers, Tcl_GetString(req->header_accept));
+    }
+
+    if (req->header_content_type != NULL) {
+        req->curl_headers = curl_slist_append(req->curl_headers, Tcl_GetString(req->header_content_type));
+    }
 
     if (req->headers != NULL) {
 
@@ -526,8 +561,6 @@ void treq_RequestRun(treq_RequestType *req) {
         }
         Tcl_DictObjDone(&search);
 
-        safe_curl_easy_setopt(CURLOPT_HTTPHEADER, req->curl_headers);
-
     }
 
     // Disable cURL misbehavior in the same cases. See:
@@ -536,6 +569,10 @@ void treq_RequestRun(treq_RequestType *req) {
     //     * https://stackoverflow.com/questions/49670008/how-to-disable-expect-100-continue-in-libcurl
     //DBG2(printf("disable Expect: 100-continue"));
     //req->curl_headers = curl_slist_append(req->curl_headers, "Expect:");
+
+    if (req->curl_headers != NULL) {
+        safe_curl_easy_setopt(CURLOPT_HTTPHEADER, req->curl_headers);
+    }
 
     req->state = TREQ_REQUEST_INPROGRESS;
 
@@ -610,10 +647,8 @@ void treq_RequestFree(treq_RequestType *req) {
 
     DBG2(printf("enter; req: %p", (void *)req));
 
-    if (req->cmd_name != NULL) {
-        Tcl_DecrRefCount(req->cmd_name);
-    }
-
+    // If we have a callback event bound to this request, make sure
+    // the callback event does not use a freed request.
     if (req->callback_event != NULL) {
         req->callback_event->request = NULL;
     }
@@ -628,43 +663,35 @@ void treq_RequestFree(treq_RequestType *req) {
     if (req->curl_easy != NULL) {
         curl_easy_cleanup(req->curl_easy);
     }
+
     if (req->curl_headers != NULL) {
         curl_slist_free_all(req->curl_headers);
     }
 
-    if (req->url != NULL) {
-        Tcl_DecrRefCount(req->url);
-    }
-    if (req->headers != NULL) {
-        Tcl_DecrRefCount(req->headers);
-    }
-    if (req->callback != NULL) {
-        Tcl_DecrRefCount(req->callback);
-    }
-    if (req->callback_debug != NULL) {
-        Tcl_DecrRefCount(req->callback_debug);
-    }
-    if (req->custom_method != NULL) {
-        Tcl_DecrRefCount(req->custom_method);
-    }
-    if (req->error != NULL) {
-        Tcl_DecrRefCount(req->error);
-    }
-    if (req->content != NULL) {
-        ckfree(req->content);
-    }
-    if (req->content_type != NULL) {
-        Tcl_DecrRefCount(req->content_type);
-    }
-    if (req->content_charset != NULL) {
-        Tcl_DecrRefCount(req->content_charset);
-    }
-    if (req->data_form != NULL) {
-        Tcl_DecrRefCount(req->data_form);
-    }
     if (req->curl_mime != NULL) {
         curl_mime_free(req->curl_mime);
     }
+
+    if (req->auth != NULL) {
+        treq_RequestAuthFree(req->auth);
+    }
+
+    if (req->content != NULL) {
+        ckfree(req->content);
+    }
+
+    Tcl_FreeObject(req->cmd_name);
+    Tcl_FreeObject(req->url);
+    Tcl_FreeObject(req->headers);
+    Tcl_FreeObject(req->callback);
+    Tcl_FreeObject(req->callback_debug);
+    Tcl_FreeObject(req->custom_method);
+    Tcl_FreeObject(req->error);
+    Tcl_FreeObject(req->content_type);
+    Tcl_FreeObject(req->content_charset);
+    Tcl_FreeObject(req->form);
+    Tcl_FreeObject(req->header_accept);
+    Tcl_FreeObject(req->header_content_type);
 
     if (req->cmd_token != NULL) {
         req->isDead = 1;

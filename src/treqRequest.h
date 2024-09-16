@@ -48,12 +48,16 @@ struct treq_RequestType {
     Tcl_Obj *url;
     Tcl_Obj *headers;
     struct curl_slist *curl_headers;
+    Tcl_Obj *header_accept;
+    Tcl_Obj *header_content_type;
 
-    Tcl_Obj *data_form;
+    Tcl_Obj *form;
     curl_mime *curl_mime;
 
     treq_RequestMethodType method;
     Tcl_Obj *custom_method;
+
+    treq_RequestAuthType *auth;
 
     int allow_redirects;
     int verbose;

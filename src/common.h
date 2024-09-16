@@ -83,6 +83,8 @@ typedef int Tcl_Size;
 #define SetResult(str) Tcl_ResetResult(interp); \
                      Tcl_SetStringObj(Tcl_GetObjResult(interp), (str), -1)
 
+#define Tcl_FreeObject(obj) if ((obj) != NULL) { Tcl_DecrRefCount(obj); (obj) = NULL; }
+
 #define TCL_TSD_INIT(keyPtr) \
     (ThreadSpecificData *)Tcl_GetThreadData((keyPtr), sizeof(ThreadSpecificData))
 
@@ -116,6 +118,14 @@ typedef struct treq_LinkedListType {
 typedef struct treq_RequestType treq_RequestType;
 typedef struct treq_SessionType treq_SessionType;
 typedef struct treq_PoolType treq_PoolType;
+typedef struct treq_RequestAuthType treq_RequestAuthType;
+
+Tcl_Obj *treq_GenerateHeaderContentType(Tcl_Obj *data);
+Tcl_Obj *treq_GenerateHeaderAccept(Tcl_Obj *data);
+
+Tcl_Obj *treq_UrlencodeTclObject(Tcl_Obj *data);
+Tcl_Obj *treq_UrldecodeTclObject(Tcl_Obj *data);
+Tcl_Obj *treq_UrldecodeString(const char *data, Tcl_Size length);
 
 #ifdef __cplusplus
 extern "C" {

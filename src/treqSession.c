@@ -6,6 +6,7 @@
 
 #include "treqSession.h"
 #include "treqRequest.h"
+#include "treqRequestAuth.h"
 
 typedef struct ThreadSpecificData {
 
@@ -53,29 +54,6 @@ treq_RequestType *treq_SessionRequestInit(treq_SessionType *ses) {
         return NULL;
     }
 
-    if (ses->headers != NULL) {
-        req->headers = ses->headers;
-        Tcl_IncrRefCount(req->headers);
-    }
-
-    if (ses->callback != NULL) {
-        req->callback = ses->callback;
-        Tcl_IncrRefCount(req->callback);
-    }
-
-    if (ses->callback_debug != NULL) {
-        req->callback_debug = ses->callback_debug;
-        Tcl_IncrRefCount(req->callback_debug);
-    }
-
-    if (ses->allow_redirects != -1) {
-        req->allow_redirects = ses->allow_redirects;
-    }
-
-    if (ses->verbose != -1) {
-        req->verbose = ses->verbose;
-    }
-
     req->session = ses;
     curl_easy_setopt(req->curl_easy, CURLOPT_SHARE, ses->curl_share);
     // Turn on cookie parser
@@ -117,12 +95,14 @@ void treq_SessionFree(treq_SessionType *ses) {
         curl_share_cleanup(ses->curl_share);
     }
 
-    if (ses->headers != NULL) {
-        Tcl_DecrRefCount(ses->headers);
-    }
+    Tcl_FreeObject(ses->headers);
+    Tcl_FreeObject(ses->callback);
+    Tcl_FreeObject(ses->callback_debug);
+    Tcl_FreeObject(ses->accept);
+    Tcl_FreeObject(ses->content_type);
 
-    if (ses->callback != NULL) {
-        Tcl_DecrRefCount(ses->callback);
+    if (ses->auth != NULL) {
+        treq_RequestAuthFree(ses->auth);
     }
 
     ckfree(ses);

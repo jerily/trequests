@@ -8,6 +8,111 @@
 // for isdigit() / isspace()
 #include <ctype.h>
 
+// This constant is not defined in public cURL headers
+#define CURL_MAX_INPUT_LENGTH 8000000
+
+typedef struct shortcutType {
+    const char *shortcut;
+    const char *value;
+} shortcutType;
+
+static const shortcutType accept_shortcuts[] = {
+    { "all", "*/*" },
+    { "json", "application/json" },
+    { NULL, NULL }
+};
+
+static const shortcutType content_type_shortcuts[] = {
+    { "json", "application/json" },
+    { NULL, NULL }
+};
+
+static const char *treq_GenerateHeader(Tcl_Obj *data, const shortcutType *table) {
+    const char *value;
+    int idx;
+    if (Tcl_GetIndexFromObjStruct(NULL, data, table, sizeof(shortcutType), NULL, TCL_EXACT, &idx) == TCL_OK) {
+        value = table[idx].value;
+        DBG2(printf("convert [%s] to [%s]", Tcl_GetString(data), value));
+    } else {
+        value = Tcl_GetString(data);
+        DBG2(printf("use [%s] as is", Tcl_GetString(data)));
+    }
+    return value;
+}
+
+Tcl_Obj *treq_GenerateHeaderAccept(Tcl_Obj *data) {
+    return Tcl_ObjPrintf("Accept: %s", treq_GenerateHeader(data, accept_shortcuts));
+}
+
+Tcl_Obj *treq_GenerateHeaderContentType(Tcl_Obj *data) {
+    return Tcl_ObjPrintf("Content-Type: %s", treq_GenerateHeader(data, content_type_shortcuts));
+}
+
+Tcl_Obj *treq_UrldecodeString(const char *data, Tcl_Size length) {
+
+    // curl_easy_unescape() can handle up to INT_MAX bytes.
+    // It is tricky to decode input string by chunks as we have to ensure that
+    // we are passing in a chunk that is not in the middle of the encoded
+    // character (%XX). Thus, currently we return an error (NULL) if the input
+    // data size exceeds this value. Perhaps in the future this function
+    // will be modified to handle larger values.
+    if (length > INT_MAX) {
+        return NULL;
+    }
+
+    int outlength;
+    char *data_decoded = curl_easy_unescape(NULL, data, (int)length, &outlength);
+
+    if (data_decoded == NULL) {
+        return NULL;
+    }
+
+    Tcl_Obj *result = Tcl_NewStringObj(data_decoded, outlength);
+    curl_free(data_decoded);
+
+    return result;
+
+}
+
+Tcl_Obj *treq_UrldecodeTclObject(Tcl_Obj *data) {
+    Tcl_Size data_length;
+    const char *data_str = Tcl_GetStringFromObj(data, &data_length);
+    return treq_UrldecodeString(data_str, data_length);
+}
+
+// This function is required for urlencode objects because curl_easy_escape()
+// has an input size limit of CURL_MAX_INPUT_LENGTH.
+Tcl_Obj *treq_UrlencodeTclObject(Tcl_Obj *data) {
+
+    Tcl_Size data_length;
+    const char *data_str = Tcl_GetStringFromObj(data, &data_length);
+
+    Tcl_Obj *result = Tcl_NewObj();
+
+    Tcl_Size pos = 0, bytes_left = data_length;
+    while (bytes_left != 0) {
+
+        int bytes_to_encode = (bytes_left > CURL_MAX_INPUT_LENGTH ? CURL_MAX_INPUT_LENGTH : bytes_left);
+
+        char *data_encoded = curl_easy_escape(NULL, &data_str[pos], bytes_to_encode);
+
+        if (data_encoded == NULL) {
+            Tcl_BounceRefCount(result);
+            return NULL;
+        }
+
+        Tcl_AppendToObj(result, data_encoded, -1);
+        curl_free(data_encoded);
+
+        pos += bytes_to_encode;
+        bytes_left -= bytes_to_encode;
+
+    }
+
+    return result;
+
+}
+
 void treq_ExecuteTclCallback(Tcl_Interp *interp, Tcl_Obj *callback, Tcl_Size objc, Tcl_Obj **objv, int background_error) {
 
     DBG2(printf("enter, objc: %" TCL_SIZE_MODIFIER "d", objc));

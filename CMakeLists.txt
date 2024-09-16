@@ -77,6 +77,8 @@ add_library(trequests SHARED
     src/treqSession.h
     src/treqRequest.c
     src/treqRequest.h
+    src/treqRequestAuth.c
+    src/treqRequestAuth.h
     src/treqPool.c
     src/treqPool.h
 )
