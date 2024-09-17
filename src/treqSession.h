@@ -24,6 +24,12 @@ struct treq_SessionType {
     Tcl_Obj *callback_debug;
     Tcl_Obj *accept;
     Tcl_Obj *content_type;
+    int timeout;
+    int timeout_connect;
+    int verify;
+    int verify_host;
+    int verify_peer;
+    int verify_status;
 
     treq_LinkedListType *requests;
 };

@@ -35,6 +35,7 @@ struct treq_RequestType {
     treq_PoolType *pool;
 
     CURL *curl_easy;
+    CURLU *curl_url;
 
     char curl_error[CURL_ERROR_SIZE];
     Tcl_Obj *error;
@@ -59,8 +60,17 @@ struct treq_RequestType {
 
     treq_RequestAuthType *auth;
 
+    Tcl_Obj *postfields;
+    Tcl_Obj *querystring;
+
     int allow_redirects;
     int verbose;
+    int timeout;
+    int timeout_connect;
+
+    int verify_host;
+    int verify_peer;
+    int verify_status;
 
     Tcl_Obj *callback;
     treq_RequestEvent *callback_event;

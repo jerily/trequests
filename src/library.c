@@ -22,6 +22,16 @@ typedef struct treq_optionListType {
     Tcl_Size count;
 } treq_optionListType;
 
+typedef struct treq_optionDataType {
+    const char *name;
+    int is_missing;
+    Tcl_Obj *value;
+    Tcl_Size count;
+    int is_urlencoded;
+    int is_fields;
+    int is_typed;
+} treq_optionDataType;
+
 typedef struct treq_optionBooleanType {
     const char *name;
     int is_missing;
@@ -70,31 +80,64 @@ typedef struct treq_RequestOptions {
     treq_optionAuthAwsSigv4Type auth_aws_sigv4;
     treq_optionObjectType accept;
     treq_optionObjectType content_type;
+    treq_optionDataType data;
+    treq_optionDataType data_urlencode;
+    treq_optionDataType data_fields;
+    treq_optionDataType data_fields_urlencode;
+    treq_optionDataType json;
+    treq_optionDataType params;
+    treq_optionDataType params_raw;
+    treq_optionBooleanType verify;
+    treq_optionBooleanType verify_host;
+    treq_optionBooleanType verify_peer;
+    treq_optionBooleanType verify_status;
     int async;
     int simple;
+    int timeout;
+    int timeout_connect;
 } treq_RequestOptions;
 
 #define treq_InitRequestOptions() { \
-    .headers =         { "-headers",         -1, NULL, 0 }, \
-    .form =            { "-from",            -1, NULL, 0 }, \
-    .verbose =         { "-verbose",         -1, NULL, 0 }, \
-    .allow_redirects = { "-allow_redirects", -1, NULL, 0 }, \
-    .callback =        { "-callback",        -1, NULL }, \
-    .callback_debug =  { "-callback_debug",  -1, NULL }, \
-    .auth_scheme =     { "-auth_scheme",     -1, NULL, -1 }, \
-    .auth_token =      { "-auth_token",      -1, NULL }, \
-    .auth_aws_sigv4 =  { "-auth_aws_sigv4",  -1, NULL, NULL }, \
-    .auth =            { "-auth",            -1, NULL, NULL, NULL }, \
-    .accept =          { "-accept",          -1, NULL }, \
-    .content_type =    { "-content_type",    -1, NULL }, \
+    .headers =                { "-headers",               -1, NULL, 0 }, \
+    .form =                   { "-from",                  -1, NULL, 0 }, \
+    .verbose =                { "-verbose",               -1, NULL, 0 }, \
+    .allow_redirects =        { "-allow_redirects",       -1, NULL, 0 }, \
+    .callback =               { "-callback",              -1, NULL }, \
+    .callback_debug =         { "-callback_debug",        -1, NULL }, \
+    .auth_scheme =            { "-auth_scheme",           -1, NULL, -1 }, \
+    .auth_token =             { "-auth_token",            -1, NULL }, \
+    .auth_aws_sigv4 =         { "-auth_aws_sigv4",        -1, NULL, NULL }, \
+    .auth =                   { "-auth",                  -1, NULL, NULL, NULL }, \
+    .accept =                 { "-accept",                -1, NULL }, \
+    .content_type =           { "-content_type",          -1, NULL }, \
+    .data =                   { "-data",                  -1, NULL, 0, 0, 0, 0 }, \
+    .data_urlencode =         { "-data_urlencode",        -1, NULL, 0, 1, 0, 0 }, \
+    .data_fields =            { "-data_fields",           -1, NULL, 0, 0, 1, 0 }, \
+    .data_fields_urlencode =  { "-data_fields_urlencode", -1, NULL, 0, 1, 1, 0 }, \
+    .json =                   { "-json",                  -1, NULL, 0, 0, 0, 1 }, \
+    .params =                 { "-params",                -1, NULL, 0, 1, 1, 0 }, \
+    .params_raw =             { "-params_raw",            -1, NULL, 0, 0, 0, 0 }, \
+    .verify =                 { "-verify",                -1, NULL, -1 }, \
+    .verify_host =            { "-verify_host",           -1, NULL, -1 }, \
+    .verify_peer =            { "-verify_peer",           -1, NULL, -1 }, \
+    .verify_status =          { "-verify_status",         -1, NULL, -1 }, \
     .async = 0, \
     .simple = 0, \
+    .timeout = -1, \
+    .timeout_connect = -1 \
 }
 
 #define treq_FreeRequestOptions(o) \
     Tcl_FreeObject((o).headers.value); \
     Tcl_FreeObject((o).form.value); \
-    Tcl_FreeObject((o).auth_aws_sigv4.value)
+    Tcl_FreeObject((o).auth_aws_sigv4.value); \
+    Tcl_FreeObject((o).data.value); \
+    Tcl_FreeObject((o).data_urlencode.value); \
+    Tcl_FreeObject((o).data_fields.value); \
+    Tcl_FreeObject((o).data_fields_urlencode.value); \
+    Tcl_FreeObject((o).json.value); \
+    Tcl_FreeObject((o).params.value); \
+    Tcl_FreeObject((o).params_raw.value)
 
 #define isOptionExists(opt) ((opt).is_missing == 0)
 
@@ -329,6 +372,145 @@ static int treq_ValidateOptionListOfDicts(Tcl_Interp *interp, treq_optionListTyp
 
 }
 
+static int treq_ValidateOptionData(Tcl_Interp *interp, treq_optionDataType *data) {
+
+    VALIDATE_COMMON(data);
+
+    // If we are here, then we are sure that we have a value in the form of
+    // a list that has at least 1 element in it
+
+    Tcl_Size objc;
+    Tcl_Obj **objv;
+    Tcl_ListObjGetElements(NULL, data->value, &objc, &objv);
+
+    // If we have typed data (i.e. json), make sure we only have one option
+    if (data->is_typed) {
+
+        if (data->count != 1) {
+            DBG2(printf("return: ERROR (%s option specified %d times)", data->name, (int)data->count));
+            Tcl_SetObjResult(interp, Tcl_ObjPrintf("%s option specified multiple times", data->name));
+            return TCL_ERROR;
+        }
+
+    }
+
+    // Process elements somehow
+    Tcl_Obj *value = NULL, *chunk;
+
+    for (Tcl_Size i = 0; i < objc; i++) {
+
+        if (data->is_fields) {
+
+            // We have key-value pairs
+
+            Tcl_Size sub_objc;
+            Tcl_Obj **sub_objv;
+            if (Tcl_ListObjGetElements(interp, objv[i], &sub_objc, &sub_objv) != TCL_OK) {
+                Tcl_SetObjResult(interp, Tcl_ObjPrintf("an invalid list is specified for"
+                    " option %s: %s", data->name, Tcl_GetStringResult(interp)));
+                goto error;
+            }
+
+            if (sub_objc == 0) {
+                Tcl_SetObjResult(interp, Tcl_ObjPrintf("an even numbered list is expected"
+                    " for option %s, but got an empty list", data->name));
+                goto error;
+            }
+
+            if ((sub_objc % 2) != 0) {
+                Tcl_SetObjResult(interp, Tcl_ObjPrintf("an even numbered list is expected"
+                    " for option %s, but got a list of %d items", data->name, (int)sub_objc));
+                goto error;
+            }
+
+            Tcl_Obj *key, *val;
+            chunk = NULL;
+
+            // Go throught the list and add key-value pairs
+            for (Tcl_Size j = 0; j < sub_objc; j++) {
+
+                key = (data->is_urlencoded ? treq_UrlencodeTclObject(sub_objv[j++]) : sub_objv[j++]);
+
+                if (key == NULL) {
+                    Tcl_SetObjResult(interp, Tcl_ObjPrintf("failed to urlencode the key"
+                        " while processing the %s option", data->name));
+                    if (chunk != NULL) {
+                        Tcl_BounceRefCount(chunk);
+                    }
+                    goto error;
+                }
+
+                val = (data->is_urlencoded ? treq_UrlencodeTclObject(sub_objv[j]) : sub_objv[j]);
+
+                if (val == NULL) {
+                    Tcl_SetObjResult(interp, Tcl_ObjPrintf("failed to urlencode the value for"
+                        " the key \"%s\" while processing the %s option", Tcl_GetString(sub_objv[--j]),
+                        data->name));
+                    if (chunk != NULL) {
+                        Tcl_BounceRefCount(chunk);
+                    }
+                    Tcl_BounceRefCount(key);
+                    goto error;
+                }
+
+                // If it is the first key-value pair, then initialize the chunk by the key
+                if (chunk == NULL) {
+                    chunk = Tcl_DuplicateObj(key);
+                } else {
+                    Tcl_AppendToObj(chunk, "&", 1);
+                    Tcl_AppendObjToObj(chunk, key);
+                }
+
+                Tcl_BounceRefCount(key);
+
+                Tcl_AppendToObj(chunk, "=", 1);
+                Tcl_AppendObjToObj(chunk, val);
+                Tcl_BounceRefCount(val);
+
+            }
+
+        } else if (data->is_urlencoded) {
+            // We don't have key-value pairs, but we need to urlencode the value
+            chunk = treq_UrlencodeTclObject(objv[i]);
+            if (chunk == NULL) {
+                Tcl_SetObjResult(interp, Tcl_ObjPrintf("failed to urlencode data"
+                    " while processing the %s option", data->name));
+            }
+        } else {
+            // We don't have key-value pairs and we should use the value as is
+            chunk = objv[i];
+        }
+
+        // If chunk is NULL, it will be considered an error
+        if (chunk == NULL) {
+error:
+            if (value != NULL) {
+                Tcl_BounceRefCount(value);
+            }
+            return TCL_ERROR;
+        }
+
+        if (value == NULL) {
+            value = chunk;
+        } else {
+            // Join the current chunk with the result using an ampersand
+            Tcl_AppendToObj(value, "&", 1);
+            Tcl_AppendObjToObj(value, chunk);
+            Tcl_BounceRefCount(chunk);
+        }
+
+    }
+
+    // Replace value for the option
+    Tcl_DecrRefCount(data->value);
+    data->value = value;
+    Tcl_IncrRefCount(data->value);
+
+    DBG2(printf("option %s: [%s]", data->name, Tcl_GetString(data->value)));
+    return TCL_OK;
+
+}
+
 static int treq_ValidateOptionBoolean(Tcl_Interp *interp, treq_optionBooleanType *data) {
 
     VALIDATE_COMMON(data);
@@ -404,6 +586,13 @@ static int treq_ValidateOptionAuth(Tcl_Interp *interp, treq_optionAuthType *data
 
 }
 
+#define checkMutuallyExclusive(opt1,opt2) \
+    if (isOptionExists(opt2)) { \
+        Tcl_SetObjResult(interp, Tcl_ObjPrintf(error_mutually_exclusive, (opt1).name, (opt2).name)); \
+        DBG2(printf("return: ERROR (%s)", Tcl_GetStringResult(interp))); \
+        return TCL_ERROR; \
+    }
+
 static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
 
     DBG2(printf("enter"));
@@ -418,10 +607,61 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
         treq_ValidateOptionObjectList(interp, (treq_optionObjectType *)&opt->auth_aws_sigv4) != TCL_OK  ||
         treq_ValidateOptionCommon(interp, (treq_optionCommonType *)&opt->accept) == TCL_ERROR           ||
         treq_ValidateOptionCommon(interp, (treq_optionCommonType *)&opt->content_type) == TCL_ERROR     ||
+        treq_ValidateOptionData(interp, &opt->data) != TCL_OK                                           ||
+        treq_ValidateOptionData(interp, &opt->data_urlencode) != TCL_OK                                 ||
+        treq_ValidateOptionData(interp, &opt->data_fields) != TCL_OK                                    ||
+        treq_ValidateOptionData(interp, &opt->data_fields_urlencode) != TCL_OK                          ||
+        treq_ValidateOptionData(interp, &opt->json) != TCL_OK                                           ||
+        treq_ValidateOptionData(interp, &opt->params) != TCL_OK                                         ||
+        treq_ValidateOptionData(interp, &opt->params_raw) != TCL_OK                                     ||
+        treq_ValidateOptionBoolean(interp, &opt->verify) != TCL_OK                                      ||
+        treq_ValidateOptionBoolean(interp, &opt->verify_host) != TCL_OK                                 ||
+        treq_ValidateOptionBoolean(interp, &opt->verify_peer) != TCL_OK                                 ||
+        treq_ValidateOptionBoolean(interp, &opt->verify_status) != TCL_OK                               ||
         treq_ValidateOptionBoolean(interp, &opt->verbose) != TCL_OK                                     ||
         treq_ValidateOptionBoolean(interp, &opt->allow_redirects) != TCL_OK)
     {
         return TCL_ERROR;
+    }
+
+    treq_optionDataType *opt_defined1, *opt_defined2;
+
+    // Check for mutually exclusive options
+
+    // Check for mutually exclusive data options. We will do this in 2 passes.
+    // 1. Go through all data options and try to find the option that is defined
+    // 2. Go through all data options and try to find the second defined option
+
+    opt_defined1 =
+        isOptionExists(opt->data)                  ? &opt->data                  :
+        isOptionExists(opt->data_urlencode)        ? &opt->data_urlencode        :
+        isOptionExists(opt->data_fields)           ? &opt->data_fields           :
+        isOptionExists(opt->data_fields_urlencode) ? &opt->data_fields_urlencode :
+        isOptionExists(opt->json)                  ? &opt->json                  :
+        NULL;
+
+    // The seconds pass
+
+    if (opt_defined1 != NULL) {
+
+        opt_defined2 =
+            (opt_defined1 != &opt->data                  && isOptionExists(opt->data))                  ? &opt->data                  :
+            (opt_defined1 != &opt->data_urlencode        && isOptionExists(opt->data_urlencode))        ? &opt->data_urlencode        :
+            (opt_defined1 != &opt->data_fields           && isOptionExists(opt->data_fields))           ? &opt->data_fields           :
+            (opt_defined1 != &opt->data_fields_urlencode && isOptionExists(opt->data_fields_urlencode)) ? &opt->data_fields_urlencode :
+            (opt_defined1 != &opt->json                  && isOptionExists(opt->json))                  ? &opt->json                  :
+            NULL;
+
+        if (opt_defined2 != NULL) {
+            goto mutuallyExclusiveError;
+        }
+
+    }
+
+    if (isOptionExists(opt->params) && isOptionExists(opt->params_raw)) {
+        opt_defined1 = &opt->params;
+        opt_defined2 = &opt->params_raw;
+        goto mutuallyExclusiveError;
     }
 
     if (isOptionExists(opt->auth_scheme) && treq_RequestAuthParseOption(interp, opt->auth_scheme.raw, &opt->auth_scheme.value) != TCL_OK) {
@@ -465,11 +705,20 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
         DBG2(printf("option %s: %s", opt->auth_token.name, "<hidden>"));
     }
 
-    DBG2(printf("option -simple: %s", (opt->simple ? "true" : "false")));
-    DBG2(printf("option -async: %s", (opt->async ? "true" : "false")));
+    DBG2(printf("option %s: %s", "-simple", (opt->simple ? "true" : "false")));
+    DBG2(printf("option %s: %s", "-async", (opt->async ? "true" : "false")));
+    DBG2(printf("option %s: %d", "-timeout", opt->timeout));
+    DBG2(printf("option %s: %d", "-timeout_connect", opt->timeout_connect));
 
     DBG2(printf("return: ok"));
     return TCL_OK;
+
+mutuallyExclusiveError:
+
+    Tcl_SetObjResult(interp, Tcl_ObjPrintf("mutually exclusive options"
+        " %s and %s were specified", opt_defined1->name, opt_defined2->name));
+    DBG2(printf("return: ERROR (%s)", Tcl_GetStringResult(interp)));
+    return TCL_ERROR;
 
 }
 
@@ -588,14 +837,6 @@ static void treq_RequestHandleDelete(ClientData clientData) {
 #define GetSessionProperty(prop,default) \
     (request->session != NULL ? (request->session->prop) : (default))
 
-#define ReplaceRequestProperty(o,r) \
-    if ((o) != NULL) { \
-        Tcl_Obj *__tmp = (r); \
-        Tcl_DecrRefCount(o); \
-        (o) = __tmp; \
-        Tcl_IncrRefCount(o); \
-    }
-
 static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType method, Tcl_Obj *custom_method,
     int objc, Tcl_Obj *const objv[], treq_SessionType *session)
 {
@@ -612,20 +853,33 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
 //     warning: ISO C forbids conversion of function pointer to object pointer type [-Wpedantic]
 #pragma GCC diagnostic ignored "-Wpedantic"
     Tcl_ArgvInfo ArgTable[] = {
-        { TCL_ARGV_FUNC, "-headers",         lappend_arg, &opt.headers,         NULL, NULL },
-        { TCL_ARGV_FUNC, "-form",            lappend_arg, &opt.form,            NULL, NULL },
-        { TCL_ARGV_FUNC, "-allow_redirects", boolean_arg, &opt.allow_redirects, NULL, NULL },
-        { TCL_ARGV_FUNC, "-verbose",         boolean_arg, &opt.verbose,         NULL, NULL },
-        { TCL_ARGV_CONSTANT, "-async",       INT2PTR(1),  &opt.async,           NULL, NULL },
-        { TCL_ARGV_CONSTANT, "-simple",      INT2PTR(1),  &opt.simple,          NULL, NULL },
-        { TCL_ARGV_FUNC, "-callback",        object_arg,  &opt.callback,        NULL, NULL },
-        { TCL_ARGV_FUNC, "-callback_debug",  object_arg,  &opt.callback_debug,  NULL, NULL },
-        { TCL_ARGV_FUNC, "-auth",            object_arg,  &opt.auth,            NULL, NULL },
-        { TCL_ARGV_FUNC, "-auth_token",      object_arg,  &opt.auth_token,      NULL, NULL },
-        { TCL_ARGV_FUNC, "-auth_scheme",     object_arg,  &opt.auth_scheme,     NULL, NULL },
-        { TCL_ARGV_FUNC, "-auth_aws_sigv4",  object_arg,  &opt.auth_aws_sigv4,  NULL, NULL },
-        { TCL_ARGV_FUNC, "-accept",          object_arg,  &opt.accept,          NULL, NULL },
-        { TCL_ARGV_FUNC, "-content_type",    object_arg,  &opt.content_type,    NULL, NULL },
+        { TCL_ARGV_FUNC, "-headers",               lappend_arg, &opt.headers,               NULL, NULL },
+        { TCL_ARGV_FUNC, "-form",                  lappend_arg, &opt.form,                  NULL, NULL },
+        { TCL_ARGV_FUNC, "-allow_redirects",       boolean_arg, &opt.allow_redirects,       NULL, NULL },
+        { TCL_ARGV_FUNC, "-verbose",               boolean_arg, &opt.verbose,               NULL, NULL },
+        { TCL_ARGV_CONSTANT, "-async",             INT2PTR(1),  &opt.async,                 NULL, NULL },
+        { TCL_ARGV_CONSTANT, "-simple",            INT2PTR(1),  &opt.simple,                NULL, NULL },
+        { TCL_ARGV_FUNC, "-callback",              object_arg,  &opt.callback,              NULL, NULL },
+        { TCL_ARGV_FUNC, "-callback_debug",        object_arg,  &opt.callback_debug,        NULL, NULL },
+        { TCL_ARGV_FUNC, "-auth",                  object_arg,  &opt.auth,                  NULL, NULL },
+        { TCL_ARGV_FUNC, "-auth_token",            object_arg,  &opt.auth_token,            NULL, NULL },
+        { TCL_ARGV_FUNC, "-auth_scheme",           object_arg,  &opt.auth_scheme,           NULL, NULL },
+        { TCL_ARGV_FUNC, "-auth_aws_sigv4",        object_arg,  &opt.auth_aws_sigv4,        NULL, NULL },
+        { TCL_ARGV_FUNC, "-accept",                object_arg,  &opt.accept,                NULL, NULL },
+        { TCL_ARGV_FUNC, "-content_type",          object_arg,  &opt.content_type,          NULL, NULL },
+        { TCL_ARGV_FUNC, "-data",                  lappend_arg, &opt.data,                  NULL, NULL },
+        { TCL_ARGV_FUNC, "-data_urlencode",        lappend_arg, &opt.data_urlencode,        NULL, NULL },
+        { TCL_ARGV_FUNC, "-data_fields",           lappend_arg, &opt.data_fields,           NULL, NULL },
+        { TCL_ARGV_FUNC, "-data_fields_urlencode", lappend_arg, &opt.data_fields_urlencode, NULL, NULL },
+        { TCL_ARGV_FUNC, "-json",                  lappend_arg, &opt.json,                  NULL, NULL },
+        { TCL_ARGV_FUNC, "-params",                lappend_arg, &opt.params,                NULL, NULL },
+        { TCL_ARGV_FUNC, "-params_raw",            lappend_arg, &opt.params_raw,            NULL, NULL },
+        { TCL_ARGV_INT,  "-timeout",               NULL,        &opt.timeout,               NULL, NULL },
+        { TCL_ARGV_INT,  "-timeout_connect",       NULL,        &opt.timeout_connect,       NULL, NULL },
+        { TCL_ARGV_FUNC, "-verify",                boolean_arg, &opt.verify,                NULL, NULL },
+        { TCL_ARGV_FUNC, "-verify_host",           boolean_arg, &opt.verify_host,           NULL, NULL },
+        { TCL_ARGV_FUNC, "-verify_peer",           boolean_arg, &opt.verify_peer,           NULL, NULL },
+        { TCL_ARGV_FUNC, "-verify_status",         boolean_arg, &opt.verify_status,           NULL, NULL },
         TCL_ARGV_TABLE_END
     };
 #pragma GCC diagnostic pop
@@ -682,30 +936,94 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
         request->auth = treq_RequestAuthDuplicate(request->session->auth);
     }
 
-    SetRequestProperty(request->header_accept, isOptionExists(opt.accept) ?
-        opt.accept.value :
-        GetSessionProperty(accept, NULL));
-    // Generate real Accept header and replace possible shortcut
-    ReplaceRequestProperty(request->header_accept, treq_GenerateHeaderAccept(request->header_accept));
+    Tcl_Obj *accept =
+        isOptionExists(opt.accept) ? opt.accept.value :
+        isOptionExists(opt.json) ? Tcl_NewStringObj("json", -1) :
+        (request->session != NULL && request->session->accept != NULL) ? request->session->accept :
+        NULL;
 
-    SetRequestProperty(request->header_content_type, isOptionExists(opt.content_type) ?
-        opt.content_type.value :
-        GetSessionProperty(content_type, NULL));
-    // Generate real Content-Type header and replace possible shortcut
-    ReplaceRequestProperty(request->header_content_type, treq_GenerateHeaderContentType(request->header_content_type));
+    if (accept != NULL) {
+        request->header_accept = treq_GenerateHeaderAccept(accept);
+        Tcl_IncrRefCount(request->header_accept);
+        Tcl_BounceRefCount(accept);
+    }
+
+    Tcl_Obj *content_type =
+        isOptionExists(opt.content_type) ? opt.content_type.value :
+        isOptionExists(opt.json) ? Tcl_NewStringObj("json", -1) :
+        (request->session != NULL && request->session->content_type != NULL) ? request->session->content_type :
+        NULL;
+
+    if (content_type != NULL) {
+        request->header_content_type = treq_GenerateHeaderContentType(content_type);
+        Tcl_IncrRefCount(request->header_content_type);
+        Tcl_BounceRefCount(content_type);
+    }
+
+    request->postfields =
+        isOptionExists(opt.data)                  ? opt.data.value                  :
+        isOptionExists(opt.data_urlencode)        ? opt.data_urlencode.value        :
+        isOptionExists(opt.data_fields)           ? opt.data_fields.value           :
+        isOptionExists(opt.data_fields_urlencode) ? opt.data_fields_urlencode.value :
+        isOptionExists(opt.json)                  ? opt.json.value                  :
+        NULL;
+
+    if (request->postfields != NULL) {
+        Tcl_IncrRefCount(request->postfields);
+    }
+
+    request->querystring =
+        isOptionExists(opt.params)     ? opt.params.value     :
+        isOptionExists(opt.params_raw) ? opt.params_raw.value :
+        NULL;
+
+    if (request->querystring != NULL) {
+        Tcl_IncrRefCount(request->querystring);
+    }
+
+    request->verify_host =
+        isOptionExists(opt.verify_host) ? opt.verify_host.value :
+        isOptionExists(opt.verify) ? opt.verify.value :
+        request->session == NULL ? -1 :
+        request->session->verify_host != -1 ? request->session->verify_host :
+        request->session->verify;
+
+    request->verify_peer =
+        isOptionExists(opt.verify_peer) ? opt.verify_peer.value :
+        isOptionExists(opt.verify) ? opt.verify.value :
+        request->session == NULL ? -1 :
+        request->session->verify_peer != -1 ? request->session->verify_peer :
+        request->session->verify;
+
+    request->verify_status =
+        isOptionExists(opt.verify_status) ? opt.verify_status.value :
+        request->session != NULL ? request->session->verify_status :
+        -1;
 
     SetRequestProperty(request->url, url);
 
     request->method = method;
     SetRequestProperty(request->custom_method, custom_method);
 
-    request->allow_redirects = isOptionExists(opt.allow_redirects) ?
-        opt.allow_redirects.value :
-        GetSessionProperty(allow_redirects, -1);
+    request->allow_redirects =
+        isOptionExists(opt.allow_redirects) ? opt.allow_redirects.value :
+        (request->session != NULL && request->session->allow_redirects != -1) ? request->session->allow_redirects :
+        1;
 
-    request->verbose = isOptionExists(opt.verbose) ?
-        opt.verbose.value :
-        GetSessionProperty(verbose, -1);
+    request->verbose =
+        isOptionExists(opt.verbose) ? opt.verbose.value :
+        (request->session != NULL && request->session->verbose != -1) ? request->session->verbose :
+        0;
+
+    request->timeout =
+        opt.timeout != -1 ? opt.timeout :
+        request->session != NULL ? request->session->timeout :
+        -1;
+
+    request->timeout_connect =
+        opt.timeout_connect != -1 ? opt.timeout_connect :
+        request->session != NULL ? request->session->timeout_connect :
+        -1;
 
     request->async = opt.async;
 
@@ -882,6 +1200,12 @@ static int treq_SessionCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
         { TCL_ARGV_FUNC, "-auth_aws_sigv4",  object_arg,  &opt.auth_aws_sigv4,  NULL, NULL },
         { TCL_ARGV_FUNC, "-accept",          object_arg,  &opt.accept,          NULL, NULL },
         { TCL_ARGV_FUNC, "-content_type",    object_arg,  &opt.content_type,    NULL, NULL },
+        { TCL_ARGV_INT,  "-timeout",         NULL,        &opt.timeout,         NULL, NULL },
+        { TCL_ARGV_INT,  "-timeout_connect", NULL,        &opt.timeout_connect, NULL, NULL },
+        { TCL_ARGV_FUNC, "-verify",          boolean_arg, &opt.verify,          NULL, NULL },
+        { TCL_ARGV_FUNC, "-verify_host",     boolean_arg, &opt.verify_host,     NULL, NULL },
+        { TCL_ARGV_FUNC, "-verify_peer",     boolean_arg, &opt.verify_peer,     NULL, NULL },
+        { TCL_ARGV_FUNC, "-verify_status",   boolean_arg, &opt.verify_status,   NULL, NULL },
         TCL_ARGV_TABLE_END
     };
 #pragma GCC diagnostic pop
@@ -937,8 +1261,15 @@ static int treq_SessionCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
         Tcl_IncrRefCount(session->content_type);
     }
 
-    session->allow_redirects = opt.allow_redirects.value;
-    session->verbose = opt.verbose.value;
+    session->verify = isOptionExists(opt.verify) ? opt.verify.value : -1;
+    session->verify_host = isOptionExists(opt.verify_host) ? opt.verify_host.value : -1;
+    session->verify_peer = isOptionExists(opt.verify_peer) ? opt.verify_peer.value : -1;
+    session->verify_status = isOptionExists(opt.verify_status) ? opt.verify_status.value : -1;
+
+    session->allow_redirects = isOptionExists(opt.allow_redirects) ? opt.allow_redirects.value : -1;
+    session->verbose = isOptionExists(opt.verbose) ? opt.verbose.value : -1;
+    session->timeout = opt.timeout;
+    session->timeout_connect = opt.timeout_connect;
 
     session->interp = interp;
     session->cmd_token = treq_CreateObjCommand(interp, "::trequests::session::handler%p",

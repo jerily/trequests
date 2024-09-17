@@ -1,0 +1,7 @@
+* add getting information about current libcurl version and its capabilities
+
+* add an interface to curl_url() to parse and manipulate URLs
+
+* add urlencode/urldecode Tcl commands
+
+* add cookie management

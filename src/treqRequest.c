@@ -427,14 +427,11 @@ void treq_RequestRun(treq_RequestType *req) {
         CURLcode __curl_res = curl_easy_setopt(req->curl_easy, (opt), (val)); \
         if (__curl_res != CURLE_OK) { \
             treq_RequestSetError(req, Tcl_ObjPrintf("curl_easy_setopt(%s) failed: %s", #opt, curl_easy_strerror(__curl_res))); \
-            return; \
+            goto error; \
         } \
     }
 
     DBG2(printf("enter..."));
-
-    DBG2(printf("url: [%s]", Tcl_GetString(req->url)));
-    safe_curl_easy_setopt(CURLOPT_URL, Tcl_GetString(req->url));
 
     switch (req->method) {
     case TREQ_METHOD_HEAD:
@@ -466,6 +463,49 @@ void treq_RequestRun(treq_RequestType *req) {
         DBG2(printf("use custom method [%s]", Tcl_GetString(req->custom_method)));
         safe_curl_easy_setopt(CURLOPT_CUSTOMREQUEST, Tcl_GetString(req->custom_method));
         break;
+    }
+
+    DBG2(printf("url: [%s]", Tcl_GetString(req->url)));
+
+    req->curl_url = curl_url();
+
+    if (curl_url_set(req->curl_url, CURLUPART_URL, Tcl_GetString(req->url), CURLU_DEFAULT_SCHEME) != CURLUE_OK) {
+        treq_RequestSetError(req, Tcl_ObjPrintf("could not parse URL \"%s\"", Tcl_GetString(req->url)));
+        goto error;
+    }
+
+    if (req->querystring != NULL) {
+        DBG2(printf("querystring: [%s]", Tcl_GetString(req->querystring)));
+        if (curl_url_set(req->curl_url, CURLUPART_QUERY, Tcl_GetString(req->querystring), CURLU_APPENDQUERY) != CURLUE_OK) {
+            treq_RequestSetError(req, Tcl_ObjPrintf("could not add URL query parameters \"%s\"", Tcl_GetString(req->querystring)));
+            goto error;
+        }
+    } else {
+        DBG2(printf("querystring: [%s]", "<none>"));
+    }
+
+#ifdef DEBUG
+    char *url_effective;
+    if (curl_url_get(req->curl_url, CURLUPART_URL, &url_effective, CURLU_PUNYCODE) == CURLUE_OK) {
+        DBG2(printf("effective url: [%s]", url_effective));
+        curl_free(url_effective);
+    } else {
+        DBG2(printf("effective url: [%s]", "ERROR"));
+    }
+#endif /* DEBUG */
+
+    safe_curl_easy_setopt(CURLOPT_CURLU, req->curl_url);
+
+    if (req->postfields != NULL) {
+
+        Tcl_Size postfields_len;
+        const char *postfields_str = Tcl_GetStringFromObj(req->postfields, &postfields_len);
+        DBG2(printf("postfields: [%s]", postfields_str));
+        safe_curl_easy_setopt(CURLOPT_POSTFIELDSIZE, (long)postfields_len);
+        safe_curl_easy_setopt(CURLOPT_POSTFIELDS, postfields_str);
+
+    } else {
+        DBG2(printf("postfields: [%s]", "<none>"));
     }
 
     if (req->auth != NULL) {
@@ -525,14 +565,18 @@ void treq_RequestRun(treq_RequestType *req) {
 
     }
 
+    DBG2(printf("set allow redirects: %s", (req->allow_redirects ? "true" : "false")));
     safe_curl_easy_setopt(CURLOPT_FOLLOWLOCATION, (req->allow_redirects ? 1L : 0L));
+    DBG2(printf("set verbose: %s", (req->verbose ? "true" : "false")));
     safe_curl_easy_setopt(CURLOPT_VERBOSE, (req->verbose ? 1L : 0L));
 
     if (req->header_accept != NULL) {
+        DBG2(printf("add accept header: [%s]", Tcl_GetString(req->header_accept)));
         req->curl_headers = curl_slist_append(req->curl_headers, Tcl_GetString(req->header_accept));
     }
 
     if (req->header_content_type != NULL) {
+        DBG2(printf("add content-type header: [%s]", Tcl_GetString(req->header_content_type)));
         req->curl_headers = curl_slist_append(req->curl_headers, Tcl_GetString(req->header_content_type));
     }
 
@@ -555,7 +599,7 @@ void treq_RequestRun(treq_RequestType *req) {
 
             if (req->curl_headers == NULL) {
                 treq_RequestSetError(req, Tcl_NewStringObj("failed to add headers", -1));
-                return;
+                goto error;
             }
 
         }
@@ -574,14 +618,48 @@ void treq_RequestRun(treq_RequestType *req) {
         safe_curl_easy_setopt(CURLOPT_HTTPHEADER, req->curl_headers);
     }
 
+    if (req->timeout_connect >= 0) {
+        DBG2(printf("set connect timeout: %d ms", req->timeout_connect));
+        safe_curl_easy_setopt(CURLOPT_CONNECTTIMEOUT_MS, req->timeout_connect);
+    } else {
+        DBG2(printf("set connect timeout: <default>"));
+    }
+
+    if (req->timeout >= 0) {
+        DBG2(printf("set timeout: %d ms", req->timeout));
+        safe_curl_easy_setopt(CURLOPT_TIMEOUT, req->timeout);
+    } else {
+        DBG2(printf("set timeout: <default>"));
+    }
+
+    if (req->verify_host != -1) {
+        safe_curl_easy_setopt(CURLOPT_SSL_VERIFYHOST, req->verify_host == 0 ? 0L : 2L);
+        DBG2(printf("set verify host: %s", req->verify_host == 0 ? "false" : "true"));
+    } else {
+        DBG2(printf("set verify host: %s", "<default>"));
+    }
+
+    if (req->verify_peer != -1) {
+        safe_curl_easy_setopt(CURLOPT_SSL_VERIFYPEER, req->verify_peer == 0 ? 0L : 1L);
+        DBG2(printf("set verify peer: %s", req->verify_peer == 0 ? "false" : "true"));
+    } else {
+        DBG2(printf("set verify peer: %s", "<default>"));
+    }
+
+    if (req->verify_status != -1) {
+        safe_curl_easy_setopt(CURLOPT_SSL_VERIFYSTATUS, req->verify_status == 0 ? 0L : 1L);
+        DBG2(printf("set verify status: %s", req->verify_status == 0 ? "false" : "true"));
+    } else {
+        DBG2(printf("set verify status: %s", "<default>"));
+    }
+
     req->state = TREQ_REQUEST_INPROGRESS;
 
     if (req->async) {
 
         if (treq_PoolAddRequest(req) != TCL_OK) {
-            req->state = TREQ_REQUEST_ERROR;
             treq_RequestSetError(req, Tcl_NewStringObj("failed to add the request to the pool", -1));
-            treq_RequestScheduleCallback(req);
+            goto error;
         }
 
     } else {
@@ -600,6 +678,14 @@ void treq_RequestRun(treq_RequestType *req) {
     }
 
     DBG2(printf("return: ok"));
+    return;
+
+error:
+
+    DBG2(printf("return: ERROR"));
+    if (req->async) {
+        treq_RequestScheduleCallback(req);
+    }
     return;
 
 }
@@ -627,9 +713,8 @@ treq_RequestType *treq_RequestInit(void) {
     // Set our callback for debug messages
     curl_easy_setopt(req->curl_easy, CURLOPT_DEBUGFUNCTION, treq_debug_callback);
     curl_easy_setopt(req->curl_easy, CURLOPT_DEBUGDATA, (void *)req);
-
-
-    req->allow_redirects = 1;
+    // Turn off signals
+    curl_easy_setopt(req->curl_easy, CURLOPT_NOSIGNAL, 1L);
 
     req->state = TREQ_REQUEST_CREATED;
 
@@ -663,6 +748,9 @@ void treq_RequestFree(treq_RequestType *req) {
     if (req->curl_easy != NULL) {
         curl_easy_cleanup(req->curl_easy);
     }
+    if (req->curl_url != NULL) {
+        curl_url_cleanup(req->curl_url);
+    }
 
     if (req->curl_headers != NULL) {
         curl_slist_free_all(req->curl_headers);
@@ -692,6 +780,8 @@ void treq_RequestFree(treq_RequestType *req) {
     Tcl_FreeObject(req->form);
     Tcl_FreeObject(req->header_accept);
     Tcl_FreeObject(req->header_content_type);
+    Tcl_FreeObject(req->postfields);
+    Tcl_FreeObject(req->querystring);
 
     if (req->cmd_token != NULL) {
         req->isDead = 1;
