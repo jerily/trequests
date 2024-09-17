@@ -8,8 +8,10 @@
 
 #include "common.h"
 
+// Values of this enum must start at 1 to differentiate between NULL
+// and a real value
 typedef enum {
-    TREQ_METHOD_HEAD,
+    TREQ_METHOD_HEAD = 1,
     TREQ_METHOD_GET,
     TREQ_METHOD_POST,
     TREQ_METHOD_PUT,
@@ -89,6 +91,12 @@ struct treq_RequestType {
     Tcl_Encoding encoding;
     Tcl_Obj *content_type;
     Tcl_Obj *content_charset;
+
+    // Other
+
+#ifdef TREQUESTS_TESTING_MODE
+    Tcl_Obj *set_options;
+#endif
 
 };
 

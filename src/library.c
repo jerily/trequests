@@ -5,6 +5,7 @@
  */
 
 #include "library.h"
+#include "testing.h"
 #include "treqSession.h"
 #include "treqRequest.h"
 #include "treqPool.h"
@@ -99,7 +100,7 @@ typedef struct treq_RequestOptions {
 
 #define treq_InitRequestOptions() { \
     .headers =                { "-headers",               -1, NULL, 0 }, \
-    .form =                   { "-from",                  -1, NULL, 0 }, \
+    .form =                   { "-form",                  -1, NULL, 0 }, \
     .verbose =                { "-verbose",               -1, NULL, 0 }, \
     .allow_redirects =        { "-allow_redirects",       -1, NULL, 0 }, \
     .callback =               { "-callback",              -1, NULL }, \
@@ -363,6 +364,7 @@ static int treq_ValidateOptionListOfDicts(Tcl_Interp *interp, treq_optionListTyp
     }
 
     if (data->value == NULL) {
+        data->is_missing = -1;
         DBG2(printf("option %s: <empty dict>", data->name));
     } else {
         DBG2(printf("option %s: [%s]", data->name, Tcl_GetString(data->value)));
@@ -383,10 +385,12 @@ static int treq_ValidateOptionData(Tcl_Interp *interp, treq_optionDataType *data
     Tcl_Obj **objv;
     Tcl_ListObjGetElements(NULL, data->value, &objc, &objv);
 
+    DBG2(printf("option %s; objc: %" TCL_SIZE_MODIFIER "d", data->name, objc));
+
     // If we have typed data (i.e. json), make sure we only have one option
     if (data->is_typed) {
 
-        if (data->count != 1) {
+        if (objc != 1) {
             DBG2(printf("return: ERROR (%s option specified %d times)", data->name, (int)data->count));
             Tcl_SetObjResult(interp, Tcl_ObjPrintf("%s option specified multiple times", data->name));
             return TCL_ERROR;
@@ -398,6 +402,8 @@ static int treq_ValidateOptionData(Tcl_Interp *interp, treq_optionDataType *data
     Tcl_Obj *value = NULL, *chunk;
 
     for (Tcl_Size i = 0; i < objc; i++) {
+
+        DBG2(printf("check element#%" TCL_SIZE_MODIFIER "d", i));
 
         if (data->is_fields) {
 
@@ -411,10 +417,9 @@ static int treq_ValidateOptionData(Tcl_Interp *interp, treq_optionDataType *data
                 goto error;
             }
 
+            // Skip empty lists
             if (sub_objc == 0) {
-                Tcl_SetObjResult(interp, Tcl_ObjPrintf("an even numbered list is expected"
-                    " for option %s, but got an empty list", data->name));
-                goto error;
+                continue;
             }
 
             if ((sub_objc % 2) != 0) {
@@ -469,16 +474,33 @@ static int treq_ValidateOptionData(Tcl_Interp *interp, treq_optionDataType *data
 
             }
 
-        } else if (data->is_urlencoded) {
-            // We don't have key-value pairs, but we need to urlencode the value
-            chunk = treq_UrlencodeTclObject(objv[i]);
-            if (chunk == NULL) {
-                Tcl_SetObjResult(interp, Tcl_ObjPrintf("failed to urlencode data"
-                    " while processing the %s option", data->name));
-            }
         } else {
-            // We don't have key-value pairs and we should use the value as is
-            chunk = objv[i];
+
+            // Skip empty values
+            Tcl_Size item_length;
+            Tcl_GetStringFromObj(objv[i], &item_length);
+            if (item_length == 0) {
+                continue;
+            }
+
+            if (data->is_urlencoded) {
+                // We don't have key-value pairs, but we need to urlencode the value
+                chunk = treq_UrlencodeTclObject(objv[i]);
+                if (chunk == NULL) {
+                    Tcl_SetObjResult(interp, Tcl_ObjPrintf("failed to urlencode data"
+                        " while processing the %s option", data->name));
+                }
+            } else {
+                // We don't have key-value pairs and we should use the value as is.
+                chunk = objv[i];
+                // If the value is NULL and we have more than 1 element, we need
+                // to duplicate the element as we will use it below as a value
+                // and add other data to it.
+                if (value == NULL && objc > 1) {
+                    chunk = Tcl_DuplicateObj(chunk);
+                }
+            }
+
         }
 
         // If chunk is NULL, it will be considered an error
@@ -503,7 +525,9 @@ error:
 
     // Replace value for the option
     Tcl_DecrRefCount(data->value);
-    data->value = value;
+    // If the value is NULL, we did not find any data. In this case, return
+    // an empty object.
+    data->value = (value == NULL ? Tcl_NewObj() : value);
     Tcl_IncrRefCount(data->value);
 
     DBG2(printf("option %s: [%s]", data->name, Tcl_GetString(data->value)));
@@ -543,6 +567,7 @@ static int treq_ValidateOptionObjectList(Tcl_Interp *interp, treq_optionObjectTy
     if (list_length == 0) {
         DBG2(printf("option %s: <empty list>", data->name));
         data->value = NULL;
+        data->is_missing = -1;
     } else {
         DBG2(printf("option %s: [%s]", data->name, Tcl_GetString(data->value)));
     }
@@ -741,6 +766,9 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
         int arg_max;
         const char *arg_help;
     } commands[] = {
+#ifdef TREQUESTS_TESTING_MODE
+        { "easy_opts",   NULL,                      2, 3, NULL         },
+#endif
         { "text",        treq_RequestGetText,       2, 2, NULL         },
         { "content",     treq_RequestGetContent,    2, 2, NULL         },
         { "error",       treq_RequestGetError,      2, 2, NULL         },
@@ -756,6 +784,9 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
     // The elements of the enumeration must be arranged in the same order
     // as in the commands struct
     enum commands {
+#ifdef TREQUESTS_TESTING_MODE
+        cmdEasyOpts,
+#endif
         cmdText, cmdContent, cmdError, cmdHeaders, cmdHeader, cmdEncoding,
         cmdStatusCode, cmdState,
         cmdDestroy
@@ -802,6 +833,20 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
         }
         result = commands[command].proc(request);
         break;
+#ifdef TREQUESTS_TESTING_MODE
+    case cmdEasyOpts:
+        result = treq_RequestGetEasyOpts(request, (objc > 2 ? objv[2] : NULL));
+        if (result == NULL) {
+            if (objc > 2) {
+                Tcl_SetObjResult(interp, Tcl_ObjPrintf("no registered easy option \"%s\"",
+                    Tcl_GetString(objv[2])));
+            } else {
+                SetResult("no registered easy options");
+            }
+            return TCL_ERROR;
+        }
+        break;
+#endif
     case cmdText:
     case cmdContent:
     case cmdError:
@@ -909,7 +954,7 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
     }
 
     SetRequestProperty(request->headers, isOptionExists(opt.headers) ?
-        treq_MergeDicts(request->session->headers, opt.headers.value, 1) :
+        treq_MergeDicts(request->session == NULL ? NULL : request->session->headers, opt.headers.value, 1) :
         GetSessionProperty(headers, NULL));
 
     if (opt.async) {
@@ -1099,7 +1144,7 @@ static int treq_RequestCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
     }
 
     DBG2(printf("return: %s", (rc == TCL_OK ? "ok" : "ERROR")));
-    return TCL_OK;
+    return rc;
 
 }
 
@@ -1151,14 +1196,16 @@ wrongNumArgs:
         if (objc < 4) {
             goto wrongNumArgs;
         }
-        rc = treq_CreateNewRequest(interp, (treq_RequestMethodType)command, objv[2], objc - 3, objv + 3, session);
+        // treq_RequestMethodType enum starts from 1, see comment for its typedef
+        rc = treq_CreateNewRequest(interp, (treq_RequestMethodType)((unsigned)command + 1), objv[2], objc - 3, objv + 3, session);
         break;
     default:
         DBG2(printf("'%s' method", Tcl_GetString(objv[1])));
         if (objc < 3) {
             goto wrongNumArgs;
         }
-        rc = treq_CreateNewRequest(interp, (treq_RequestMethodType)command, NULL, objc - 2, objv + 2, session);
+        // treq_RequestMethodType enum starts from 1, see comment for its typedef
+        rc = treq_CreateNewRequest(interp, (treq_RequestMethodType)((unsigned)command + 1), NULL, objc - 2, objv + 2, session);
         break;
     }
 

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT.
  */
 
+#include "testing.h"
 #include "treqRequest.h"
 #include "treqSession.h"
 #include "treqPool.h"
@@ -422,14 +423,26 @@ error:
 
 void treq_RequestRun(treq_RequestType *req) {
 
-#define safe_curl_easy_setopt(opt,val) \
-    { \
-        CURLcode __curl_res = curl_easy_setopt(req->curl_easy, (opt), (val)); \
-        if (__curl_res != CURLE_OK) { \
-            treq_RequestSetError(req, Tcl_ObjPrintf("curl_easy_setopt(%s) failed: %s", #opt, curl_easy_strerror(__curl_res))); \
-            goto error; \
-        } \
-    }
+#define safe_curl_easy_setopt(opt,val) { \
+    CURLcode __curl_res = curl_easy_setopt(req->curl_easy, (opt), (val)); \
+    if (__curl_res != CURLE_OK) { \
+        treq_RequestSetError(req, Tcl_ObjPrintf("curl_easy_setopt(%s) failed: %s", #opt, curl_easy_strerror(__curl_res))); \
+        goto error; \
+    } else { \
+        treq_RequestRegisterEasyOption(req, opt, val); \
+    } \
+}
+
+#define safe_curl_url_set(opt,val,flag) { \
+    CURLUcode __curl_res = curl_url_set(req->curl_url, (opt), (val), (flag)); \
+    if (__curl_res != CURLUE_OK) { \
+        treq_RequestSetError(req, Tcl_ObjPrintf("curl_url_set(%s) failed: %s", #opt, curl_url_strerror(__curl_res))); \
+        goto error; \
+    } else { \
+        treq_RequestRegisterEasyOption(req, opt, val); \
+    } \
+}
+
 
     DBG2(printf("enter..."));
 
@@ -469,17 +482,11 @@ void treq_RequestRun(treq_RequestType *req) {
 
     req->curl_url = curl_url();
 
-    if (curl_url_set(req->curl_url, CURLUPART_URL, Tcl_GetString(req->url), CURLU_DEFAULT_SCHEME) != CURLUE_OK) {
-        treq_RequestSetError(req, Tcl_ObjPrintf("could not parse URL \"%s\"", Tcl_GetString(req->url)));
-        goto error;
-    }
+    safe_curl_url_set(CURLUPART_URL, Tcl_GetString(req->url), CURLU_DEFAULT_SCHEME);
 
-    if (req->querystring != NULL) {
+    if (req->querystring != NULL && Tcl_GetStringLengthFromObj(req->querystring) != 0) {
         DBG2(printf("querystring: [%s]", Tcl_GetString(req->querystring)));
-        if (curl_url_set(req->curl_url, CURLUPART_QUERY, Tcl_GetString(req->querystring), CURLU_APPENDQUERY) != CURLUE_OK) {
-            treq_RequestSetError(req, Tcl_ObjPrintf("could not add URL query parameters \"%s\"", Tcl_GetString(req->querystring)));
-            goto error;
-        }
+        safe_curl_url_set(CURLUPART_QUERY, Tcl_GetString(req->querystring), CURLU_APPENDQUERY);
     } else {
         DBG2(printf("querystring: [%s]", "<none>"));
     }
@@ -782,6 +789,9 @@ void treq_RequestFree(treq_RequestType *req) {
     Tcl_FreeObject(req->header_content_type);
     Tcl_FreeObject(req->postfields);
     Tcl_FreeObject(req->querystring);
+#ifdef TREQUESTS_TESTING_MODE
+    Tcl_FreeObject(req->set_options);
+#endif
 
     if (req->cmd_token != NULL) {
         req->isDead = 1;

@@ -85,6 +85,12 @@ typedef int Tcl_Size;
 
 #define Tcl_FreeObject(obj) if ((obj) != NULL) { Tcl_DecrRefCount(obj); (obj) = NULL; }
 
+static inline Tcl_Size Tcl_GetStringLengthFromObj(Tcl_Obj *obj) {
+    Tcl_Size length;
+    Tcl_GetStringFromObj(obj, &length);
+    return length;
+}
+
 #define TCL_TSD_INIT(keyPtr) \
     (ThreadSpecificData *)Tcl_GetThreadData((keyPtr), sizeof(ThreadSpecificData))
 

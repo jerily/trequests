@@ -46,7 +46,7 @@ endif()
 
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     add_compile_definitions(TCL_MEM_DEBUG=1)
-    set(CMAKE_C_FLAGS "-g -DDEBUG ${CMAKE_C_FLAGS}")
+    set(CMAKE_C_FLAGS "-g ${CMAKE_C_FLAGS}")
 else()
     # NDEBUG to not generate code for assert
     add_compile_definitions(NDEBUG)
@@ -69,6 +69,7 @@ add_custom_target(shell ${CMAKE_COMMAND} -E env TCLLIBPATH=${CMAKE_CURRENT_BINAR
     DEPENDS ${TARGET})
 
 add_library(trequests SHARED
+    src/testing.h
     src/library.c
     src/library.h
     src/common.c
@@ -82,6 +83,12 @@ add_library(trequests SHARED
     src/treqPool.c
     src/treqPool.h
 )
+
+if ("${TREQUESTS_TESTING_MODE}" STREQUAL "ON")
+    add_compile_definitions(TREQUESTS_TESTING_MODE=1)
+    target_sources(trequests PRIVATE src/testing.c)
+endif()
+
 set_target_properties(trequests PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 include_directories(${TCL_INCLUDE_PATH} ${CURL_INCLUDE_DIRS})
