@@ -662,7 +662,7 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
         return TCL_ERROR;
     }
 
-    treq_optionDataType *opt_defined1, *opt_defined2;
+    void *opt_defined1, *opt_defined2;
 
     // Check for mutually exclusive options
 
@@ -671,11 +671,12 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
     // 2. Go through all data options and try to find the second defined option
 
     opt_defined1 =
-        isOptionExists(opt->data)                  ? &opt->data                  :
-        isOptionExists(opt->data_urlencode)        ? &opt->data_urlencode        :
-        isOptionExists(opt->data_fields)           ? &opt->data_fields           :
-        isOptionExists(opt->data_fields_urlencode) ? &opt->data_fields_urlencode :
-        isOptionExists(opt->json)                  ? &opt->json                  :
+        isOptionExists(opt->data)                  ? (void *)&opt->data                  :
+        isOptionExists(opt->data_urlencode)        ? (void *)&opt->data_urlencode        :
+        isOptionExists(opt->data_fields)           ? (void *)&opt->data_fields           :
+        isOptionExists(opt->data_fields_urlencode) ? (void *)&opt->data_fields_urlencode :
+        isOptionExists(opt->json)                  ? (void *)&opt->json                  :
+        isOptionExists(opt->form)                  ? (void *)&opt->form                  :
         NULL;
 
     // The seconds pass
@@ -683,11 +684,12 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
     if (opt_defined1 != NULL) {
 
         opt_defined2 =
-            (opt_defined1 != &opt->data                  && isOptionExists(opt->data))                  ? &opt->data                  :
-            (opt_defined1 != &opt->data_urlencode        && isOptionExists(opt->data_urlencode))        ? &opt->data_urlencode        :
-            (opt_defined1 != &opt->data_fields           && isOptionExists(opt->data_fields))           ? &opt->data_fields           :
-            (opt_defined1 != &opt->data_fields_urlencode && isOptionExists(opt->data_fields_urlencode)) ? &opt->data_fields_urlencode :
-            (opt_defined1 != &opt->json                  && isOptionExists(opt->json))                  ? &opt->json                  :
+            (opt_defined1 != (void *)&opt->data                  && isOptionExists(opt->data))                  ? (void *)&opt->data                  :
+            (opt_defined1 != (void *)&opt->data_urlencode        && isOptionExists(opt->data_urlencode))        ? (void *)&opt->data_urlencode        :
+            (opt_defined1 != (void *)&opt->data_fields           && isOptionExists(opt->data_fields))           ? (void *)&opt->data_fields           :
+            (opt_defined1 != (void *)&opt->data_fields_urlencode && isOptionExists(opt->data_fields_urlencode)) ? (void *)&opt->data_fields_urlencode :
+            (opt_defined1 != (void *)&opt->json                  && isOptionExists(opt->json))                  ? (void *)&opt->json                  :
+            (opt_defined1 != (void *)&opt->form                  && isOptionExists(opt->form))                  ? (void *)&opt->form                  :
             NULL;
 
         if (opt_defined2 != NULL) {
@@ -754,7 +756,8 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
 mutuallyExclusiveError:
 
     Tcl_SetObjResult(interp, Tcl_ObjPrintf("mutually exclusive options"
-        " %s and %s were specified", opt_defined1->name, opt_defined2->name));
+        " %s and %s were specified", ((treq_optionCommonType *)opt_defined1)->name,
+        ((treq_optionCommonType *)opt_defined2)->name));
     DBG2(printf("return: ERROR (%s)", Tcl_GetStringResult(interp)));
     return TCL_ERROR;
 

@@ -237,13 +237,16 @@ test treqOptions-4.5 { Test -data option, mutually exclusive options } -body {
     lappend result $err
     catch { ::trequests::get http://localhost -data {foo %!1} -json x } err
     lappend result $err
+    catch { ::trequests::get http://localhost -data {foo %!1} -form {x y} } err
+    lappend result $err
     join $result \n
 } -cleanup {
     unset -nocomplain result err
 } -result {mutually exclusive options -data and -data_urlencode were specified
 mutually exclusive options -data and -data_fields were specified
 mutually exclusive options -data and -data_fields_urlencode were specified
-mutually exclusive options -data and -json were specified}
+mutually exclusive options -data and -json were specified
+mutually exclusive options -data and -form were specified}
 
 test treqOptions-5.1 { Test -json option, missing value } -body {
     set r [::trequests::get http://localhost -json]
@@ -285,13 +288,16 @@ test treqOptions-5.5 { Test -json option, mutually exclusive options } -body {
     lappend result $err
     catch { ::trequests::get http://localhost -json {foo %!1} -data x } err
     lappend result $err
+    catch { ::trequests::get http://localhost -json {foo %!1} -form {x y} } err
+    lappend result $err
     join $result \n
 } -cleanup {
     unset -nocomplain result err
 } -result {mutually exclusive options -data_urlencode and -json were specified
 mutually exclusive options -data_fields and -json were specified
 mutually exclusive options -data_fields_urlencode and -json were specified
-mutually exclusive options -data and -json were specified}
+mutually exclusive options -data and -json were specified
+mutually exclusive options -json and -form were specified}
 
 test treqOptions-6.1 { Test -data_urlencode option, missing value } -body {
     set r [::trequests::get http://localhost -data_urlencode]
@@ -350,13 +356,16 @@ test treqOptions-6.5 { Test -data_urlencode option, mutually exclusive options }
     lappend result $err
     catch { ::trequests::get http://localhost -data_urlencode {foo %!1} -json x } err
     lappend result $err
+    catch { ::trequests::get http://localhost -data_urlencode {foo %!1} -form {x y} } err
+    lappend result $err
     join $result \n
 } -cleanup {
     unset -nocomplain result err
 } -result {mutually exclusive options -data and -data_urlencode were specified
 mutually exclusive options -data_urlencode and -data_fields were specified
 mutually exclusive options -data_urlencode and -data_fields_urlencode were specified
-mutually exclusive options -data_urlencode and -json were specified}
+mutually exclusive options -data_urlencode and -json were specified
+mutually exclusive options -data_urlencode and -form were specified}
 
 test treqOptions-7.1 { Test -data_fields option, missing value } -body {
     set r [::trequests::get http://localhost -data_fields]
@@ -438,13 +447,16 @@ test treqOptions-7.5 { Test -data_fields option, mutually exclusive options } -b
     lappend result $err
     catch { ::trequests::get http://localhost -data_fields {foo %!1} -json x } err
     lappend result $err
+    catch { ::trequests::get http://localhost -data_fields {foo %!1} -form {x y} } err
+    lappend result $err
     join $result \n
 } -cleanup {
     unset -nocomplain result err
 } -result {mutually exclusive options -data_urlencode and -data_fields were specified
 mutually exclusive options -data and -data_fields were specified
 mutually exclusive options -data_fields and -data_fields_urlencode were specified
-mutually exclusive options -data_fields and -json were specified}
+mutually exclusive options -data_fields and -json were specified
+mutually exclusive options -data_fields and -form were specified}
 
 test treqOptions-8.1 { Test -data_fields_urlencode option, missing value } -body {
     set r [::trequests::get http://localhost -data_fields_urlencode]
@@ -526,13 +538,16 @@ test treqOptions-8.5 { Test -data_fields_urlencode option, mutually exclusive op
     lappend result $err
     catch { ::trequests::get http://localhost -data_fields_urlencode {foo %!1} -json x } err
     lappend result $err
+    catch { ::trequests::get http://localhost -data_fields_urlencode {foo %!1} -form {x y} } err
+    lappend result $err
     join $result \n
 } -cleanup {
     unset -nocomplain result err
 } -result {mutually exclusive options -data_urlencode and -data_fields_urlencode were specified
 mutually exclusive options -data and -data_fields_urlencode were specified
 mutually exclusive options -data_fields and -data_fields_urlencode were specified
-mutually exclusive options -data_fields_urlencode and -json were specified}
+mutually exclusive options -data_fields_urlencode and -json were specified
+mutually exclusive options -data_fields_urlencode and -form were specified}
 
 test treqOptions-9.1 { Test -params option, missing value } -body {
     set r [::trequests::get http://localhost -params]
@@ -833,6 +848,27 @@ test treqOptions-12.4 { Test -form option, empty value } -constraints testingMod
     catch { $r destroy }
     unset -nocomplain r
 } -returnCodes error -result {no registered easy option "CURLOPT_MIMEPOST"}
+
+test treqOptions-12.5 { Test -form option, mutually exclusive options } -body {
+    set result [list]
+    catch { ::trequests::get http://localhost -form {foo x} -data_urlencode x } err
+    lappend result $err
+    catch { ::trequests::get http://localhost -form {foo x} -data {x y} } err
+    lappend result $err
+    catch { ::trequests::get http://localhost -form {foo x} -data_fields {x y} } err
+    lappend result $err
+    catch { ::trequests::get http://localhost -form {foo x} -json x } err
+    lappend result $err
+    catch { ::trequests::get http://localhost -form {foo x} -data_fields_urlencode {x y} } err
+    lappend result $err
+    join $result \n
+} -cleanup {
+    unset -nocomplain result err
+} -result {mutually exclusive options -data_urlencode and -form were specified
+mutually exclusive options -data and -form were specified
+mutually exclusive options -data_fields and -form were specified
+mutually exclusive options -json and -form were specified
+mutually exclusive options -data_fields_urlencode and -form were specified}
 
 test treqOptions-13.1 { Test -verbose option, missing value } -body {
     set r [::trequests::get http://localhost -verbose]
