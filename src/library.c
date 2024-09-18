@@ -142,6 +142,19 @@ typedef struct treq_RequestOptions {
 
 #define isOptionExists(opt) ((opt).is_missing == 0)
 
+static const struct {
+    const char *name;
+    treq_RequestMethodType method;
+} known_methods[] = {
+    { "HEAD",   TREQ_METHOD_HEAD   },
+    { "GET",    TREQ_METHOD_GET    },
+    { "POST",   TREQ_METHOD_POST   },
+    { "PUT",    TREQ_METHOD_PUT    },
+    { "PATCH",  TREQ_METHOD_PATCH  },
+    { "DELETE", TREQ_METHOD_DELETE },
+    { NULL }
+};
+
 static int lappend_arg(void *clientData, Tcl_Obj *objPtr, void *dstPtr) {
     UNUSED(clientData);
     treq_optionListType *option_list = (treq_optionListType *)dstPtr;
@@ -778,7 +791,7 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
         { "status_code", treq_RequestGetStatusCode, 2, 2, NULL         },
         { "state",       treq_RequestGetState,      2, 2, NULL         },
         { "destroy",     NULL,                      2, 2, NULL         },
-        { NULL, NULL, 0, 0, NULL }
+        { NULL }
     };
 
     // The elements of the enumeration must be arranged in the same order
@@ -1129,7 +1142,15 @@ static int treq_RequestCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
             return TCL_ERROR;
         }
 
-        rc = treq_CreateNewRequest(interp, TREQ_METHOD_CUSTOM, objv[1], objc - 2, objv + 2, NULL);
+        // If custom request was specified, but it is a known request type, then use it.
+        int idx;
+        if (Tcl_GetIndexFromObjStruct(NULL, objv[1], known_methods, sizeof(known_methods[0]), NULL, TCL_EXACT, &idx) == TCL_OK) {
+            DBG2(printf("found known method: %s", known_methods[idx].name));
+            rc = treq_CreateNewRequest(interp, known_methods[idx].method, NULL, objc - 2, objv + 2, NULL);
+        } else {
+            DBG2(printf("found custom method: [%s]", Tcl_GetString(objv[1])));
+            rc = treq_CreateNewRequest(interp, TREQ_METHOD_CUSTOM, objv[1], objc - 2, objv + 2, NULL);
+        }
 
     } else {
 
@@ -1165,25 +1186,34 @@ wrongNumArgs:
         return TCL_ERROR;
     }
 
-    static const char *const commands[] = {
-        "head", "get", "post", "put", "patch", "delete", "request",
-        "destroy",
-        NULL
-    };
-
     enum commands {
-        cmdHead, cmdGet, cmdPost, cmdPut, cmdPatch, cmdDelete, cmdRequest,
-        cmdDestroy
+        cmdRequest, cmdCustomRequest, cmdDestroy
     };
 
-    int command;
-    if (Tcl_GetIndexFromObj(interp, objv[1], commands, "command", 0, &command) != TCL_OK) {
+    static const struct {
+        const char *name;
+        enum commands cmd;
+        treq_RequestMethodType method;
+    } commands[] = {
+        { "head",    cmdRequest,       TREQ_METHOD_HEAD   },
+        { "get",     cmdRequest,       TREQ_METHOD_GET    },
+        { "post",    cmdRequest,       TREQ_METHOD_POST   },
+        { "put",     cmdRequest,       TREQ_METHOD_PUT    },
+        { "patch",   cmdRequest,       TREQ_METHOD_PATCH  },
+        { "delete",  cmdRequest,       TREQ_METHOD_DELETE },
+        { "request", cmdCustomRequest, TREQ_METHOD_CUSTOM },
+        { "destroy", cmdDestroy,       0                  },
+        { NULL }
+    };
+
+    int idx;
+    if (Tcl_GetIndexFromObjStruct(interp, objv[1], commands, sizeof(commands[0]), "command", 0, &idx) != TCL_OK) {
         return TCL_ERROR;
     }
 
     int rc = TCL_OK;
 
-    switch ((enum commands) command) {
+    switch (commands[idx].cmd) {
     case cmdDestroy:
         DBG2(printf("destroy session"));
         if (objc != 2) {
@@ -1191,21 +1221,32 @@ wrongNumArgs:
         }
         Tcl_DeleteCommandFromToken(session->interp, session->cmd_token);
         break;
-    case cmdRequest:
+    case cmdCustomRequest:
         DBG2(printf("request command"));
         if (objc < 4) {
             goto wrongNumArgs;
         }
-        // treq_RequestMethodType enum starts from 1, see comment for its typedef
-        rc = treq_CreateNewRequest(interp, (treq_RequestMethodType)((unsigned)command + 1), objv[2], objc - 3, objv + 3, session);
+
+        int method_idx;
+        if (Tcl_GetIndexFromObjStruct(NULL, objv[2], known_methods, sizeof(known_methods[0]), NULL, TCL_EXACT, &method_idx) == TCL_OK) {
+
+            DBG2(printf("found known method: %s", known_methods[method_idx].name));
+            rc = treq_CreateNewRequest(interp, known_methods[method_idx].method, NULL, objc - 3, objv + 3, NULL);
+
+        } else {
+
+            DBG2(printf("found custom method: [%s]", Tcl_GetString(objv[2])));
+            rc = treq_CreateNewRequest(interp, commands[idx].method, objv[2], objc - 3, objv + 3, NULL);
+
+        }
+
         break;
-    default:
+    case cmdRequest:
         DBG2(printf("'%s' method", Tcl_GetString(objv[1])));
         if (objc < 3) {
             goto wrongNumArgs;
         }
-        // treq_RequestMethodType enum starts from 1, see comment for its typedef
-        rc = treq_CreateNewRequest(interp, (treq_RequestMethodType)((unsigned)command + 1), NULL, objc - 2, objv + 2, session);
+        rc = treq_CreateNewRequest(interp, commands[idx].method, NULL, objc - 2, objv + 2, session);
         break;
     }
 
@@ -1376,7 +1417,8 @@ int Trequests_Init(Tcl_Interp *interp) {
     Tcl_CreateNamespace(interp, "::trequests::session", NULL, NULL);
     Tcl_CreateNamespace(interp, "::trequests::request", NULL, NULL);
 
-    Tcl_CreateObjCommand(interp, "::trequests::request", treq_RequestCmd, NULL, NULL);
+    Tcl_CreateObjCommand(interp, "::trequests::request", treq_RequestCmd,
+        NULL, NULL);
 
     Tcl_CreateObjCommand(interp, "::trequests::head", treq_RequestCmd,
         INT2PTR((treq_RequestMethodType)TREQ_METHOD_HEAD), NULL);

@@ -27,85 +27,139 @@ test treqOptions-1.2 { Test simple async create/destroy actions without running 
     unset -nocomplain r result
 } -result {1 0}
 
-test treqOptions-2.1 { Test HEAD request } -constraints testingModeEnabled -body {
+test treqOptions-2.1.1 { Test HEAD request } -constraints testingModeEnabled -body {
+    set result [list]
     set r [::trequests::head http://localhost -async]
-    list \
+    lappend result [list \
         [$r easy_opts CURLOPT_HTTPGET] \
         [$r easy_opts CURLOPT_NOBODY] \
         [catch { $r easy_opts CURLOPT_POST }] \
         [catch { $r easy_opts CURLOPT_UPLOAD }] \
-        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+    $r destroy
+    set r [::trequests::request HEAD http://localhost -async]
+    lappend result [list \
+        [$r easy_opts CURLOPT_HTTPGET] \
+        [$r easy_opts CURLOPT_NOBODY] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
 } -cleanup {
     catch { $r destroy }
-    unset -nocomplain r
-} -result {1 1 1 1 1}
+    unset -nocomplain r result
+} -result {{1 1 1 1 1} {1 1 1 1 1}}
 
-test treqOptions-2.2 { Test GET request } -constraints testingModeEnabled -body {
+test treqOptions-2.1.2 { Test GET request } -constraints testingModeEnabled -body {
+    set result [list]
     set r [::trequests::get http://localhost -async]
-    list \
+    lappend result [list \
         [$r easy_opts CURLOPT_HTTPGET] \
         [catch { $r easy_opts CURLOPT_NOBODY }] \
         [catch { $r easy_opts CURLOPT_POST }] \
         [catch { $r easy_opts CURLOPT_UPLOAD }] \
-        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+    $r destroy
+    set r [::trequests::request GET http://localhost -async]
+    lappend result [list \
+        [$r easy_opts CURLOPT_HTTPGET] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
 } -cleanup {
     catch { $r destroy }
-    unset -nocomplain r
-} -result {1 1 1 1 1}
+    unset -nocomplain r result
+} -result {{1 1 1 1 1} {1 1 1 1 1}}
 
-test treqOptions-2.3 { Test POST request } -constraints testingModeEnabled -body {
+test treqOptions-2.1.3 { Test POST request } -constraints testingModeEnabled -body {
+    set result [list]
     set r [::trequests::post http://localhost -async]
-    list \
+    lappend result [list \
         [catch { $r easy_opts CURLOPT_HTTPGET }] \
         [catch { $r easy_opts CURLOPT_NOBODY }] \
         [$r easy_opts CURLOPT_POST] \
         [catch { $r easy_opts CURLOPT_UPLOAD }] \
-        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+    $r destroy
+    set r [::trequests::request POST http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [$r easy_opts CURLOPT_POST] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
 } -cleanup {
     catch { $r destroy }
-    unset -nocomplain r
-} -result {1 1 1 1 1}
+    unset -nocomplain r result
+} -result {{1 1 1 1 1} {1 1 1 1 1}}
 
-test treqOptions-2.4 { Test PUT request } -constraints testingModeEnabled -body {
+test treqOptions-2.1.4 { Test PUT request } -constraints testingModeEnabled -body {
+    set result [list]
     set r [::trequests::put http://localhost -async]
-    list \
+    lappend result [list \
         [catch { $r easy_opts CURLOPT_HTTPGET }] \
         [catch { $r easy_opts CURLOPT_NOBODY }] \
         [catch { $r easy_opts CURLOPT_POST }] \
         [$r easy_opts CURLOPT_UPLOAD] \
-        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+    $r destroy
+    set r [::trequests::request PUT http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [$r easy_opts CURLOPT_UPLOAD] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
 } -cleanup {
     catch { $r destroy }
-    unset -nocomplain r
-} -result {1 1 1 1 1}
+    unset -nocomplain r result
+} -result {{1 1 1 1 1} {1 1 1 1 1}}
 
-test treqOptions-2.5 { Test PATCH request } -constraints testingModeEnabled -body {
+test treqOptions-2.1.5 { Test PATCH request } -constraints testingModeEnabled -body {
+    set result [list]
     set r [::trequests::patch http://localhost -async]
-    list \
+    lappend result [list \
         [catch { $r easy_opts CURLOPT_HTTPGET }] \
         [catch { $r easy_opts CURLOPT_NOBODY }] \
         [catch { $r easy_opts CURLOPT_POST }] \
         [catch { $r easy_opts CURLOPT_UPLOAD }] \
-        [$r easy_opts CURLOPT_CUSTOMREQUEST]
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+    $r destroy
+    set r [::trequests::request PATCH http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
 } -cleanup {
     catch { $r destroy }
-    unset -nocomplain r
-} -result {1 1 1 1 PATCH}
+    unset -nocomplain r result
+} -result {{1 1 1 1 PATCH} {1 1 1 1 PATCH}}
 
-test treqOptions-2.6 { Test DELETE request } -constraints testingModeEnabled -body {
+test treqOptions-2.1.6 { Test DELETE request } -constraints testingModeEnabled -body {
+    set result [list]
     set r [::trequests::delete http://localhost -async]
-    list \
+    lappend result [list \
         [catch { $r easy_opts CURLOPT_HTTPGET }] \
         [catch { $r easy_opts CURLOPT_NOBODY }] \
         [catch { $r easy_opts CURLOPT_POST }] \
         [catch { $r easy_opts CURLOPT_UPLOAD }] \
-        [$r easy_opts CURLOPT_CUSTOMREQUEST]
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+    $r destroy
+    set r [::trequests::request DELETE http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
 } -cleanup {
     catch { $r destroy }
-    unset -nocomplain r
-} -result {1 1 1 1 DELETE}
+    unset -nocomplain r result
+} -result {{1 1 1 1 DELETE} {1 1 1 1 DELETE}}
 
-test treqOptions-2.7 { Test custom request } -constraints testingModeEnabled -body {
+test treqOptions-2.2 { Test custom request } -constraints testingModeEnabled -body {
     set r [::trequests::request XCUSTOM http://localhost -async]
     list \
         [catch { $r easy_opts CURLOPT_HTTPGET }] \
