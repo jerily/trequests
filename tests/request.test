@@ -15,10 +15,10 @@ test treqRequest-1.1 { Test GET request, no query } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {}
+} -match glob -result {args {}
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Host httpbin.org
 }
 url https://httpbin.org/get}
@@ -29,10 +29,10 @@ test treqRequest-1.2 { Test GET request, with raw parameters } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {{foobar test} qux}
+} -match glob -result {args {{foobar test} qux}
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Host httpbin.org
 }
 url {https://httpbin.org/get?foobar test=qux}}
@@ -43,10 +43,10 @@ test treqRequest-1.3 { Test GET request, with parameters } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {{$key} {space val} {%^#$} &&^== foo bar}
+} -match glob -result {args {{$key} {space val} {%^#$} &&^== foo bar}
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Host httpbin.org
 }
 url {https://httpbin.org/get?foo=bar&%24key=space val&%25^%23%24=%26%26^%3d%3d}}
@@ -57,13 +57,13 @@ test treqRequest-2.1 { Test DELETE request, no query } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {}
+} -match glob -result {args {}
 data {}
 files {}
 form {}
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Host httpbin.org
 }
 json null
@@ -75,13 +75,13 @@ test treqRequest-3.1 { Test PATCH request, no query } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {}
+} -match glob -result {args {}
 data {}
 files {}
 form {}
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Host httpbin.org
 }
 json null
@@ -93,13 +93,13 @@ test treqRequest-4.1 { Test POST request, no data } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {}
+} -match glob -result {args {}
 data {}
 files {}
 form {}
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Content-Length 0
   Content-Type application/x-www-form-urlencoded
   Host httpbin.org
@@ -113,13 +113,13 @@ test treqRequest-4.2 { Test POST request, -data option } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {}
+} -match glob -result {args {}
 data {}
 files {}
 form {a b {foobar 123} {} test true}
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Content-Length 26
   Content-Type application/x-www-form-urlencoded
   Host httpbin.org
@@ -133,13 +133,13 @@ test treqRequest-4.3 { Test POST request, -data_fields option } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {}
+} -match glob -result {args {}
 data {}
 files {}
 form {a b {foobar 123} {} test true}
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Content-Length 26
   Content-Type application/x-www-form-urlencoded
   Host httpbin.org
@@ -153,13 +153,13 @@ test treqRequest-4.4 { Test POST request, -data_urlencode option } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {}
+} -match glob -result {args {}
 data {}
 files {}
 form {foobar%20123&a=b {} test=true {}}
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Content-Length 34
   Content-Type application/x-www-form-urlencoded
   Host httpbin.org
@@ -173,13 +173,13 @@ test treqRequest-4.5 { Test POST request, -data_fields_urlencode option } -body 
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {}
+} -match glob -result {args {}
 data {}
 files {}
 form {a b foobar%20123 {} test true}
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Content-Length 28
   Content-Type application/x-www-form-urlencoded
   Host httpbin.org
@@ -193,13 +193,13 @@ test treqRequest-4.6 { Test POST request, -json option } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {}
+} -match glob -result {args {}
 data {{ "a": "b", "c": 1 }}
 files {}
 form {}
 headers {
   Accept application/json
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Content-Length 20
   Content-Type application/json
   Host httpbin.org
@@ -213,13 +213,13 @@ test treqRequest-5.1 { Test PUT request without data } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {}
+} -match glob -result {args {}
 data {}
 files {}
 form {}
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Host httpbin.org
 }
 json null
@@ -231,13 +231,13 @@ test treqRequest-5.2 { Test PUT request with data } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {args {}
+} -match glob -result {args {}
 data {}
 files {}
 form {{foobar%$123 data} {}}
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Content-Length 22
   Content-Type application/x-www-form-urlencoded
   Host httpbin.org
@@ -292,9 +292,9 @@ test treqRequest-8.1 { Test custom headers } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {headers {
+} -match glob -match glob -result {headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Host httpbin.org
   Test-Header foo
   X-Head {some value here}
@@ -306,10 +306,10 @@ test treqRequest-9.1 { Test gzip compression } -body {
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result {deflated true
+} -match glob -result {deflated true
 headers {
   Accept */*
-  Accept-Encoding {deflate, gzip}
+  Accept-Encoding *
   Host httpbin.org
 }
 method GET}

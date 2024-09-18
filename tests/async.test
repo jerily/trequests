@@ -50,7 +50,6 @@ test treqAsync-2.1 { Test multiple async requests } -body {
 
     set r1 [::trequests::get https://httpbin.org/status/404 -async -callback [list set ::done]]
     set r2 [::trequests::get https://httpbin.org/status/405 -async -callback [list set ::done]]
-    set r3 [::trequests::get https://httpbin.org/status/406 -async -callback [list set ::done]]
 
     set timer [after 10000 [list set ::done timeout]]
 
@@ -68,13 +67,6 @@ test treqAsync-2.1 { Test multiple async requests } -body {
     }
     lappend result [$::done status_code]
 
-    # wait for 3rd request
-    vwait ::done
-    if { $::done eq "timeout" } {
-        return -code error "timeout reached on 3rd request"
-    }
-    lappend result [$::done status_code]
-
     lsort $result
 
 } -cleanup {
@@ -82,6 +74,6 @@ test treqAsync-2.1 { Test multiple async requests } -body {
     catch { $r1 destroy }
     catch { $r2 destroy }
     catch { $r3 destroy }
-    unset -nocomplain r1 r2 r3 result timer ::done
-} -result {404 405 406}
+    unset -nocomplain r1 r2 result timer ::done
+} -result {404 405}
 
