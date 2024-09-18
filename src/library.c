@@ -764,9 +764,22 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType metho
 
     }
 
-    if (opt->async && opt->simple) {
-        SetResult("-async and -simple switches are incompatible with each other");
-        return TCL_ERROR;
+    if (opt->async) {
+
+        if (opt->simple) {
+            DBG2(printf("return: ERROR (both -async and -simple)"));
+            SetResult("-async and -simple switches are incompatible with each other");
+            return TCL_ERROR;
+        }
+
+    } else {
+
+        if (isOptionExists(opt->callback)) {
+            DBG2(printf("return: ERROR (-callback without -async)"));
+            SetResult("-callback option can only be used for async requests");
+            return TCL_ERROR;
+        }
+
     }
 
     if (isOptionExists(opt->auth_token)) {
@@ -1406,6 +1419,108 @@ done:
 
 }
 
+static int treq_CurlVersionCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[]) {
+
+    UNUSED(clientData);
+
+    int rc = TCL_OK;
+
+    DBG2(printf("enter; objc: %d", objc));
+
+    if (objc > 2) {
+        Tcl_WrongNumArgs(interp, 1, objv, "?property?");
+        DBG2(printf("return: TCL_ERROR (wrong # args)"));
+        return TCL_ERROR;
+    }
+
+    curl_version_info_data *vi = curl_version_info(CURLVERSION_NOW);
+    Tcl_Obj *result = Tcl_NewDictObj();
+
+#define ADD_VERSION_INFO(k,v) Tcl_DictObjPut(NULL, result, Tcl_NewStringObj(k, -1), (v))
+#define ADD_VERSION_INFO_STR(v) if (vi->v != NULL) { ADD_VERSION_INFO(#v, Tcl_NewStringObj(vi->v, -1)); }
+
+    ADD_VERSION_INFO_STR(version);
+    ADD_VERSION_INFO_STR(host);
+    ADD_VERSION_INFO_STR(ssl_version);
+    ADD_VERSION_INFO_STR(libz_version);
+
+    Tcl_Obj *protocols = Tcl_NewListObj(0, NULL);
+    for (const char *const *protocol = vi->protocols; *protocol != NULL; protocol++) {
+        Tcl_ListObjAppendElement(NULL, protocols, Tcl_NewStringObj(*protocol, -1));
+    }
+    ADD_VERSION_INFO("protocols", protocols);
+
+    if (vi->age < CURLVERSION_SECOND) goto finish;
+    ADD_VERSION_INFO_STR(ares);
+
+    if (vi->age < CURLVERSION_THIRD) goto finish;
+    ADD_VERSION_INFO_STR(libidn);
+
+    if (vi->age < CURLVERSION_FOURTH) goto finish;
+    ADD_VERSION_INFO_STR(libssh_version);
+
+    if (vi->age < CURLVERSION_FIFTH) goto finish;
+    ADD_VERSION_INFO_STR(brotli_version);
+
+    if (vi->age < CURLVERSION_SIXTH) goto finish;
+    ADD_VERSION_INFO_STR(nghttp2_version);
+    ADD_VERSION_INFO_STR(quic_version);
+
+    if (vi->age < CURLVERSION_SEVENTH) goto finish;
+    ADD_VERSION_INFO_STR(cainfo);
+    ADD_VERSION_INFO_STR(capath);
+
+    if (vi->age < CURLVERSION_EIGHTH) goto finish;
+    ADD_VERSION_INFO_STR(cainfo);
+    ADD_VERSION_INFO_STR(capath);
+
+    if (vi->age < CURLVERSION_EIGHTH) goto finish;
+    ADD_VERSION_INFO_STR(zstd_version);
+
+    if (vi->age < CURLVERSION_NINTH) goto finish;
+    ADD_VERSION_INFO_STR(hyper_version);
+
+    if (vi->age < CURLVERSION_TENTH) goto finish;
+    ADD_VERSION_INFO_STR(gsasl_version);
+
+    if (vi->age < CURLVERSION_ELEVENTH) goto finish;
+
+    Tcl_Obj *features = Tcl_NewListObj(0, NULL);
+    for (const char *const *feature_name = vi->feature_names; *feature_name != NULL; feature_name++) {
+        Tcl_ListObjAppendElement(NULL, features, Tcl_NewStringObj(*feature_name, -1));
+    }
+    ADD_VERSION_INFO("features", features);
+
+    if (vi->age < CURLVERSION_TWELFTH) goto finish;
+    ADD_VERSION_INFO_STR(rtmp_version);
+
+finish:
+
+    if (objc > 1) {
+
+        Tcl_Obj *prop = NULL;
+        Tcl_DictObjGet(NULL, result, objv[1], &prop);
+
+        if (prop == NULL) {
+            Tcl_SetObjResult(interp, Tcl_ObjPrintf("unknown curl version property \"%s\"",
+                Tcl_GetString(objv[1])));
+            rc = TCL_ERROR;
+            goto done;
+        }
+
+        Tcl_SetObjResult(interp, prop);
+
+    } else {
+        Tcl_SetObjResult(interp, result);
+    }
+
+done:
+
+    DBG2(printf("return: %s", (rc == TCL_OK ? "ok" : "ERROR")));
+    Tcl_BounceRefCount(result);
+    return rc;
+
+}
 
 #if TCL_MAJOR_VERSION > 8
 #define MIN_VERSION "9.0"
@@ -1470,6 +1585,8 @@ int Trequests_Init(Tcl_Interp *interp) {
         INT2PTR((treq_RequestMethodType)TREQ_METHOD_DELETE), NULL);
 
     Tcl_CreateObjCommand(interp, "::trequests::session", treq_SessionCmd, NULL, NULL);
+
+    Tcl_CreateObjCommand(interp, "::trequests::curl_version", treq_CurlVersionCmd, NULL, NULL);
 
     Tcl_RegisterConfig(interp, "trequests", treq_pkgconfig, "iso8859-1");
 
