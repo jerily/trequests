@@ -125,6 +125,8 @@ void treq_RequestSetEncoding(treq_RequestType *req, Tcl_Encoding encoding);
 
 void treq_RequestScheduleCallback(treq_RequestType *req);
 
+const char *treq_RequestGetMethodName(treq_RequestMethodType method);
+
 #ifdef __cplusplus
 }
 #endif

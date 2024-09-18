@@ -805,3 +805,22 @@ void treq_RequestFree(treq_RequestType *req) {
 
 }
 
+const char *treq_RequestGetMethodName(treq_RequestMethodType method) {
+    switch (method) {
+    case TREQ_METHOD_HEAD:
+        return "HEAD";
+    case TREQ_METHOD_GET:
+        return "GET";
+    case TREQ_METHOD_POST:
+        return "POST";
+    case TREQ_METHOD_PUT:
+        return "PUT";
+    case TREQ_METHOD_PATCH:
+        return "PATCH";
+    case TREQ_METHOD_DELETE:
+        return "DELETE";
+    case TREQ_METHOD_CUSTOM:
+        return "custom";
+    }
+    return NULL; // <- we should not reach here, but it is necessary to avoid compiler warnings
+}

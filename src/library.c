@@ -631,7 +631,7 @@ static int treq_ValidateOptionAuth(Tcl_Interp *interp, treq_optionAuthType *data
         return TCL_ERROR; \
     }
 
-static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
+static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType method, treq_RequestOptions *opt) {
 
     DBG2(printf("enter"));
 
@@ -669,6 +669,11 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
     // Check for mutually exclusive data options. We will do this in 2 passes.
     // 1. Go through all data options and try to find the option that is defined
     // 2. Go through all data options and try to find the second defined option
+    //
+    // Note: here we check compatibility ONLY for options representing POST data.
+    // This is important because below we will use the opt_defined1 variable
+    // to check if the current HTTP method is compatible with these POST data
+    // options.
 
     opt_defined1 =
         isOptionExists(opt->data)                  ? (void *)&opt->data                  :
@@ -682,6 +687,29 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestOptions *opt) {
     // The seconds pass
 
     if (opt_defined1 != NULL) {
+
+        // If we are here, that means we have at least one option that
+        // represents POST data. This is the best place to check if the POST
+        // data options are compatible with the current HTTP method.
+        // So, let's do it now. We will use "switch" instead of "if" here to
+        // get a compiler warning if we add a new supported HTTP method that
+        // is not considered here.
+
+        switch (method) {
+        case TREQ_METHOD_HEAD:
+        case TREQ_METHOD_GET:
+        case TREQ_METHOD_PATCH:
+        case TREQ_METHOD_DELETE:
+        case TREQ_METHOD_PUT:
+            Tcl_SetObjResult(interp, Tcl_ObjPrintf("option %s is incompatible with HTTP method %s",
+                ((treq_optionCommonType *)opt_defined1)->name, treq_RequestGetMethodName(method)));
+            DBG2(printf("return: ERROR (%s)", Tcl_GetStringResult(interp)));
+            return TCL_ERROR;
+        case TREQ_METHOD_POST:
+        case TREQ_METHOD_CUSTOM:
+            // There methods are allowed for POST data options. Do nothing.
+            break;
+        }
 
         opt_defined2 =
             (opt_defined1 != (void *)&opt->data                  && isOptionExists(opt->data))                  ? (void *)&opt->data                  :
@@ -951,7 +979,7 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
         goto error;
     }
 
-    if (treq_ValidateOptions(interp, &opt) != TCL_OK) {
+    if (treq_ValidateOptions(interp, method, &opt) != TCL_OK) {
         DBG2(printf("return: ERROR (failed to validate)"));
         goto error;
     }
@@ -1307,7 +1335,7 @@ static int treq_SessionCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
         goto error;
     }
 
-    if (treq_ValidateOptions(interp, &opt) != TCL_OK) {
+    if (treq_ValidateOptions(interp, TREQ_METHOD_CUSTOM, &opt) != TCL_OK) {
         DBG2(printf("return: ERROR (failed to validate)"));
         goto error;
     }
