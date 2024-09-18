@@ -1487,39 +1487,45 @@ static int treq_CurlVersionCmd(ClientData clientData, Tcl_Interp *interp, int ob
     }
     ADD_VERSION_INFO("protocols", protocols);
 
+#if LIBCURL_VERSION_NUM >= 0x070A01
     if (vi->age < CURLVERSION_SECOND) goto finish;
     ADD_VERSION_INFO_STR(ares);
 
+#if LIBCURL_VERSION_NUM >= 0x070C00
     if (vi->age < CURLVERSION_THIRD) goto finish;
     ADD_VERSION_INFO_STR(libidn);
 
+#if LIBCURL_VERSION_NUM >= 0x071001
     if (vi->age < CURLVERSION_FOURTH) goto finish;
     ADD_VERSION_INFO_STR(libssh_version);
 
+#if LIBCURL_VERSION_NUM >= 0x073900
     if (vi->age < CURLVERSION_FIFTH) goto finish;
     ADD_VERSION_INFO_STR(brotli_version);
 
+#if LIBCURL_VERSION_NUM >= 0x074200
     if (vi->age < CURLVERSION_SIXTH) goto finish;
     ADD_VERSION_INFO_STR(nghttp2_version);
     ADD_VERSION_INFO_STR(quic_version);
 
+#if LIBCURL_VERSION_NUM >= 0x074600
     if (vi->age < CURLVERSION_SEVENTH) goto finish;
     ADD_VERSION_INFO_STR(cainfo);
     ADD_VERSION_INFO_STR(capath);
 
-    if (vi->age < CURLVERSION_EIGHTH) goto finish;
-    ADD_VERSION_INFO_STR(cainfo);
-    ADD_VERSION_INFO_STR(capath);
-
+#if LIBCURL_VERSION_NUM >= 0x074800
     if (vi->age < CURLVERSION_EIGHTH) goto finish;
     ADD_VERSION_INFO_STR(zstd_version);
 
+#if LIBCURL_VERSION_NUM >= 0x074B00
     if (vi->age < CURLVERSION_NINTH) goto finish;
     ADD_VERSION_INFO_STR(hyper_version);
 
+#if LIBCURL_VERSION_NUM >= 0x074D00
     if (vi->age < CURLVERSION_TENTH) goto finish;
     ADD_VERSION_INFO_STR(gsasl_version);
 
+#if LIBCURL_VERSION_NUM >= 0x075700
     if (vi->age < CURLVERSION_ELEVENTH) goto finish;
 
     Tcl_Obj *features = Tcl_NewListObj(0, NULL);
@@ -1528,8 +1534,21 @@ static int treq_CurlVersionCmd(ClientData clientData, Tcl_Interp *interp, int ob
     }
     ADD_VERSION_INFO("features", features);
 
+#if LIBCURL_VERSION_NUM >= 0x080800
     if (vi->age < CURLVERSION_TWELFTH) goto finish;
     ADD_VERSION_INFO_STR(rtmp_version);
+
+#endif // CURLVERSION_TWELFTH
+#endif // CURLVERSION_ELEVENTH
+#endif // CURLVERSION_TENTH
+#endif // CURLVERSION_NINTH
+#endif // CURLVERSION_EIGHTH
+#endif // CURLVERSION_SEVENTH
+#endif // CURLVERSION_SIXTH
+#endif // CURLVERSION_FIFTH
+#endif // CURLVERSION_FOURTH
+#endif // CURLVERSION_THIRD
+#endif // CURLVERSION_SECOND
 
 finish:
 
