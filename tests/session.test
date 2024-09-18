@@ -120,21 +120,21 @@ test treqSession-3.1.4 { Test PUT request } -constraints testingModeEnabled -bod
         [catch { $r easy_opts CURLOPT_HTTPGET }] \
         [catch { $r easy_opts CURLOPT_NOBODY }] \
         [catch { $r easy_opts CURLOPT_POST }] \
-        [$r easy_opts CURLOPT_UPLOAD] \
-        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
     $r destroy
     set r [$s request PUT http://localhost -async]
     lappend result [list \
         [catch { $r easy_opts CURLOPT_HTTPGET }] \
         [catch { $r easy_opts CURLOPT_NOBODY }] \
         [catch { $r easy_opts CURLOPT_POST }] \
-        [$r easy_opts CURLOPT_UPLOAD] \
-        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
 } -cleanup {
     catch { $r destroy }
     catch { $s destroy }
     unset -nocomplain r s result
-} -result {{1 1 1 1 1} {1 1 1 1 1}}
+} -result {{1 1 1 1 PUT} {1 1 1 1 PUT}}
 
 test treqSession-3.1.5 { Test PATCH request } -constraints testingModeEnabled -body {
     set result [list]
@@ -207,4 +207,27 @@ test treqSession-4.1 { Test unknown request } -body {
     catch { $s destroy }
     unset -nocomplain r s
 } -returnCodes error -result {bad command "foo": must be head, get, post, put, patch, delete, request, or destroy}
+
+test treqSession-5.1 { Test cookie share } -body {
+    set s [::trequests::session]
+    $s get https://httpbin.org/cookies/set -simple -params [list freeform treqSession-5.1]
+    set r [$s get https://httpbin.org/cookies]
+    httpbin 200 $r
+}  -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain r s
+} -result {cookies {freeform treqSession-5.1}}
+
+test treqSession-6.1 { Test session option -header } -constraints testingModeEnabled -body {
+    set s [::trequests::session -headers {header1 {value here} header2 foo header3 bar}]
+    set r [$s get http://localhost -headers {HEadeR2 {new value here} header4 val4} -async]
+    $r easy_opts CURLOPT_HTTPHEADER
+}   -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain r s
+} -result {{header1: value here} {header3: bar} {HEadeR2: new value here} {header4: val4}}
+
+
 

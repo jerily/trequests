@@ -54,8 +54,8 @@ endif ()
 
 #set(CMAKE_VERBOSE_MAKEFILE ON)
 
-set(CMAKE_CTEST_ARGUMENTS "--verbose")
-#set(CMAKE_CTEST_ARGUMENTS "--output-on-failure")
+#set(CMAKE_CTEST_ARGUMENTS "--verbose")
+set(CMAKE_CTEST_ARGUMENTS "--verbose" "--output-on-failure")
 enable_testing()
 add_test(NAME AllUnitTests
     COMMAND ${TCL_TCLSH} ${CMAKE_CURRENT_SOURCE_DIR}/tests/all.tcl -verbose "body error start"

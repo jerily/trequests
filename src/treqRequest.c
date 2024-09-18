@@ -462,7 +462,7 @@ void treq_RequestRun(treq_RequestType *req) {
         break;
     case TREQ_METHOD_PUT:
         DBG2(printf("use method %s", "PUT"));
-        safe_curl_easy_setopt(CURLOPT_UPLOAD, 1L);
+        safe_curl_easy_setopt(CURLOPT_CUSTOMREQUEST, "PUT");
         break;
     case TREQ_METHOD_PATCH:
         DBG2(printf("use method %s", "PATCH"));
@@ -502,18 +502,6 @@ void treq_RequestRun(treq_RequestType *req) {
 #endif /* DEBUG */
 
     safe_curl_easy_setopt(CURLOPT_CURLU, req->curl_url);
-
-    if (req->postfields != NULL) {
-
-        Tcl_Size postfields_len;
-        const char *postfields_str = Tcl_GetStringFromObj(req->postfields, &postfields_len);
-        DBG2(printf("postfields: [%s]", postfields_str));
-        safe_curl_easy_setopt(CURLOPT_POSTFIELDSIZE, (long)postfields_len);
-        safe_curl_easy_setopt(CURLOPT_POSTFIELDS, postfields_str);
-
-    } else {
-        DBG2(printf("postfields: [%s]", "<none>"));
-    }
 
     if (req->auth != NULL) {
 
@@ -570,6 +558,17 @@ void treq_RequestRun(treq_RequestType *req) {
 
         safe_curl_easy_setopt(CURLOPT_MIMEPOST, req->curl_mime);
 
+    } else if (req->postfields != NULL) {
+
+        Tcl_Size postfields_len;
+        const char *postfields_str = Tcl_GetStringFromObj(req->postfields, &postfields_len);
+        DBG2(printf("postfields: [%s]", postfields_str));
+        safe_curl_easy_setopt(CURLOPT_POSTFIELDSIZE, (long)postfields_len);
+        safe_curl_easy_setopt(CURLOPT_POSTFIELDS, postfields_str);
+
+    } else if (req->method == TREQ_METHOD_POST || req->method == TREQ_METHOD_PUT) {
+        DBG2(printf("postfields: [%s]", "<none>"));
+        safe_curl_easy_setopt(CURLOPT_POSTFIELDSIZE, 0L);
     }
 
     DBG2(printf("set allow redirects: %s", (req->allow_redirects ? "true" : "false")));
@@ -634,7 +633,7 @@ void treq_RequestRun(treq_RequestType *req) {
 
     if (req->timeout >= 0) {
         DBG2(printf("set timeout: %d ms", req->timeout));
-        safe_curl_easy_setopt(CURLOPT_TIMEOUT, req->timeout);
+        safe_curl_easy_setopt(CURLOPT_TIMEOUT_MS, req->timeout);
     } else {
         DBG2(printf("set timeout: <default>"));
     }
@@ -722,6 +721,8 @@ treq_RequestType *treq_RequestInit(void) {
     curl_easy_setopt(req->curl_easy, CURLOPT_DEBUGDATA, (void *)req);
     // Turn off signals
     curl_easy_setopt(req->curl_easy, CURLOPT_NOSIGNAL, 1L);
+    // Enable all supported compression methods
+    curl_easy_setopt(req->curl_easy, CURLOPT_ACCEPT_ENCODING, "");
 
     req->state = TREQ_REQUEST_CREATED;
 

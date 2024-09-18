@@ -37,7 +37,7 @@ static const struct {
     { "CURLOPT_VERBOSE",           TREQ_OPT_LONG    },
     { "CURLOPT_HTTPHEADER",        TREQ_OPT_SLIST   },
     { "CURLOPT_CONNECTTIMEOUT_MS", TREQ_OPT_LONG    },
-    { "CURLOPT_TIMEOUT",           TREQ_OPT_LONG    },
+    { "CURLOPT_TIMEOUT_MS",        TREQ_OPT_LONG    },
     { "CURLOPT_SSL_VERIFYHOST",    TREQ_OPT_LONG    },
     { "CURLOPT_SSL_VERIFYPEER",    TREQ_OPT_LONG    },
     { "CURLOPT_SSL_VERIFYSTATUS",  TREQ_OPT_LONG    },

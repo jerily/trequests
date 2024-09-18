@@ -447,28 +447,21 @@ static int treq_ValidateOptionData(Tcl_Interp *interp, treq_optionDataType *data
             // Go throught the list and add key-value pairs
             for (Tcl_Size j = 0; j < sub_objc; j++) {
 
-                key = (data->is_urlencoded ? treq_UrlencodeTclObject(sub_objv[j++]) : sub_objv[j++]);
+                key = sub_objv[j++];
 
-                if (key == NULL) {
-                    Tcl_SetObjResult(interp, Tcl_ObjPrintf("failed to urlencode the key"
-                        " while processing the %s option", data->name));
-                    if (chunk != NULL) {
-                        Tcl_BounceRefCount(chunk);
+                if (data->is_urlencoded) {
+
+                    key = treq_UrlencodeTclObject(key);
+
+                    if (key == NULL) {
+                        Tcl_SetObjResult(interp, Tcl_ObjPrintf("failed to urlencode the key"
+                            " while processing the %s option", data->name));
+                        if (chunk != NULL) {
+                            Tcl_BounceRefCount(chunk);
+                        }
+                        goto error;
                     }
-                    goto error;
-                }
 
-                val = (data->is_urlencoded ? treq_UrlencodeTclObject(sub_objv[j]) : sub_objv[j]);
-
-                if (val == NULL) {
-                    Tcl_SetObjResult(interp, Tcl_ObjPrintf("failed to urlencode the value for"
-                        " the key \"%s\" while processing the %s option", Tcl_GetString(sub_objv[--j]),
-                        data->name));
-                    if (chunk != NULL) {
-                        Tcl_BounceRefCount(chunk);
-                    }
-                    Tcl_BounceRefCount(key);
-                    goto error;
                 }
 
                 // If it is the first key-value pair, then initialize the chunk by the key
@@ -480,6 +473,29 @@ static int treq_ValidateOptionData(Tcl_Interp *interp, treq_optionDataType *data
                 }
 
                 Tcl_BounceRefCount(key);
+
+                val = sub_objv[j];
+
+                // If the value is empty, skip it and do not add the equals character
+                if (Tcl_GetStringLengthFromObj(val) == 0) {
+                    continue;
+                }
+
+                if (data->is_urlencoded) {
+
+                    val = treq_UrlencodeTclObject(val);
+
+                    if (val == NULL) {
+                        Tcl_SetObjResult(interp, Tcl_ObjPrintf("failed to urlencode the value for"
+                            " the key \"%s\" while processing the %s option", Tcl_GetString(sub_objv[--j]),
+                            data->name));
+                        if (chunk != NULL) {
+                            Tcl_BounceRefCount(chunk);
+                        }
+                        goto error;
+                    }
+
+                }
 
                 Tcl_AppendToObj(chunk, "=", 1);
                 Tcl_AppendObjToObj(chunk, val);
@@ -565,7 +581,7 @@ static int treq_ValidateOptionBoolean(Tcl_Interp *interp, treq_optionBooleanType
 
 }
 
-static int treq_ValidateOptionObjectList(Tcl_Interp *interp, treq_optionObjectType *data) {
+static int treq_ValidateOptionObjectList(Tcl_Interp *interp, treq_optionObjectType *data, int allow_empty) {
 
     VALIDATE_COMMON(data);
 
@@ -578,9 +594,16 @@ static int treq_ValidateOptionObjectList(Tcl_Interp *interp, treq_optionObjectTy
     }
 
     if (list_length == 0) {
-        DBG2(printf("option %s: <empty list>", data->name));
-        data->value = NULL;
-        data->is_missing = -1;
+        if (allow_empty) {
+            DBG2(printf("option %s: <empty list>", data->name));
+            data->value = NULL;
+            data->is_missing = -1;
+        } else {
+            DBG2(printf("return: ERROR (%s is an empty list)", data->name));
+            Tcl_SetObjResult(interp, Tcl_ObjPrintf("%s option cannot be an empty list",
+                data->name));
+            return TCL_ERROR;
+        }
     } else {
         DBG2(printf("option %s: [%s]", data->name, Tcl_GetString(data->value)));
     }
@@ -609,8 +632,8 @@ static int treq_ValidateOptionAuth(Tcl_Interp *interp, treq_optionAuthType *data
     if (objc != 2) {
         DBG2(printf("return: ERROR (list length is %" TCL_SIZE_MODIFIER "d)", objc));
         Tcl_SetObjResult(interp, Tcl_ObjPrintf("%s option is expected to be"
-            " a list with 2 elements, but got a list with %d elements", data->name,
-            (int)objc));
+            " a list with 2 elements, but got a list with %d element%s", data->name,
+            (int)objc, (objc == 1 ? "" : "s")));
         return TCL_ERROR;
     }
 
@@ -637,12 +660,12 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType metho
 
     if (treq_ValidateOptionListOfDicts(interp, &opt->headers) != TCL_OK                                 ||
         treq_ValidateOptionListOfDicts(interp, &opt->form) != TCL_OK                                    ||
-        treq_ValidateOptionObjectList(interp, &opt->callback) != TCL_OK                                 ||
-        treq_ValidateOptionObjectList(interp, &opt->callback_debug) != TCL_OK                           ||
-        treq_ValidateOptionObjectList(interp, (treq_optionObjectType *)&opt->auth_scheme) != TCL_OK     ||
+        treq_ValidateOptionObjectList(interp, &opt->callback, 1) != TCL_OK                              ||
+        treq_ValidateOptionObjectList(interp, &opt->callback_debug, 1) != TCL_OK                        ||
+        treq_ValidateOptionObjectList(interp, (treq_optionObjectType *)&opt->auth_scheme, 0) != TCL_OK  ||
         treq_ValidateOptionCommon(interp, (treq_optionCommonType *)&opt->auth_token) == TCL_ERROR       ||
         treq_ValidateOptionAuth(interp, &opt->auth) != TCL_OK                                           ||
-        treq_ValidateOptionObjectList(interp, (treq_optionObjectType *)&opt->auth_aws_sigv4) != TCL_OK  ||
+        treq_ValidateOptionObjectList(interp, (treq_optionObjectType *)&opt->auth_aws_sigv4, 0) != TCL_OK  ||
         treq_ValidateOptionCommon(interp, (treq_optionCommonType *)&opt->accept) == TCL_ERROR           ||
         treq_ValidateOptionCommon(interp, (treq_optionCommonType *)&opt->content_type) == TCL_ERROR     ||
         treq_ValidateOptionData(interp, &opt->data) != TCL_OK                                           ||
@@ -700,11 +723,11 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType metho
         case TREQ_METHOD_GET:
         case TREQ_METHOD_PATCH:
         case TREQ_METHOD_DELETE:
-        case TREQ_METHOD_PUT:
             Tcl_SetObjResult(interp, Tcl_ObjPrintf("option %s is incompatible with HTTP method %s",
                 ((treq_optionCommonType *)opt_defined1)->name, treq_RequestGetMethodName(method)));
             DBG2(printf("return: ERROR (%s)", Tcl_GetStringResult(interp)));
             return TCL_ERROR;
+        case TREQ_METHOD_PUT:
         case TREQ_METHOD_POST:
         case TREQ_METHOD_CUSTOM:
             // There methods are allowed for POST data options. Do nothing.
@@ -784,6 +807,20 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType metho
 
     if (isOptionExists(opt->auth_token)) {
         DBG2(printf("option %s: %s", opt->auth_token.name, "<hidden>"));
+    }
+
+    if (opt->timeout < -1) {
+        DBG2(printf("return: ERROR (-timeout less than -1)"));
+        Tcl_SetObjResult(interp, Tcl_ObjPrintf("%s option is expected as unsigned integer"
+            " value, but got %d", "-timeout", opt->timeout));
+        return TCL_ERROR;
+    }
+
+    if (opt->timeout_connect < -1) {
+        DBG2(printf("return: ERROR (-timeout_connect less than -1)"));
+        Tcl_SetObjResult(interp, Tcl_ObjPrintf("%s option is expected as unsigned integer"
+            " value, but got %d", "-timeout_connect", opt->timeout_connect));
+        return TCL_ERROR;
     }
 
     DBG2(printf("option %s: %s", "-simple", (opt->simple ? "true" : "false")));

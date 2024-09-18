@@ -1,0 +1,18 @@
+# Copyright Jerily LTD. All Rights Reserved.
+# SPDX-FileCopyrightText: 2024 Neofytos Dimitriou (neo@jerily.cy)
+# SPDX-License-Identifier: MIT.
+
+package require tcltest
+namespace import -force ::tcltest::test
+
+package require trequests
+
+source [file join [file dirname [info script]] common.tcl]
+
+test treqSimple-1.1 { Test simple request, success } -body {
+    ::trequests::get https://www.example.com -simple
+} -match glob -result {*Example Domain*}
+
+test treqSimple-2.1 { Test simple request, failure } -body {
+    ::trequests::get https://www.example.co1m -simple
+} -returnCodes error -result {cURL error: Could not resolve host: www.example.co1m}
