@@ -1,0 +1,17 @@
+* add an interface to curl_url() to parse and manipulate URLs
+
+* add urlencode/urldecode Tcl commands
+
+* add cookie management
+
+* currently we set CURLOPT_ACCEPT_ENCODING to "" on curl handle creation. Curl will generate
+  appropriate Accept-Encoding: headers for requests and will decompress responses.
+  We need to add an option to control this header and enable/disable internal decompression
+  of response body in curl: https://curl.se/libcurl/c/CURLOPT_ACCEPT_ENCODING.html
+
+* add option "-variable". For sync request, this option will be set to
+  the request handle command. For async request it will be set to the request
+  handle command when request is done. It will give ability to run async requests
+  without callbacks but with vwait, similar to how thread::send -async works
+  "thread::send -async ... varname; vwait varname"
+

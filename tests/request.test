@@ -1,0 +1,315 @@
+# Copyright Jerily LTD. All Rights Reserved.
+# SPDX-FileCopyrightText: 2024 Neofytos Dimitriou (neo@jerily.cy)
+# SPDX-License-Identifier: MIT.
+
+package require tcltest
+namespace import -force ::tcltest::test
+
+package require trequests
+
+source [file join [file dirname [info script]] common.tcl]
+
+test treqRequest-1.1 { Test GET request, no query } -body {
+    set r [::trequests::get https://httpbin.org/get]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {}
+headers {
+  Accept */*
+  Accept-Encoding *
+  Host httpbin.org
+}
+url https://httpbin.org/get}
+
+test treqRequest-1.2 { Test GET request, with raw parameters } -body {
+    set r [::trequests::get https://httpbin.org/get -params_raw "foobar%20test=qux"]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {{foobar test} qux}
+headers {
+  Accept */*
+  Accept-Encoding *
+  Host httpbin.org
+}
+url {https://httpbin.org/get?foobar test=qux}}
+
+test treqRequest-1.3 { Test GET request, with parameters } -body {
+    set r [::trequests::get https://httpbin.org/get -params [list foo bar {$key} {space val} {%^#$} {&&^==}]]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {{$key} {space val} {%^#$} &&^== foo bar}
+headers {
+  Accept */*
+  Accept-Encoding *
+  Host httpbin.org
+}
+url {https://httpbin.org/get?foo=bar&%24key=space val&%25^%23%24=%26%26^%3d%3d}}
+
+test treqRequest-2.1 { Test DELETE request, no query } -body {
+    set r [::trequests::delete https://httpbin.org/delete]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {}
+data {}
+files {}
+form {}
+headers {
+  Accept */*
+  Accept-Encoding *
+  Host httpbin.org
+}
+json null
+url https://httpbin.org/delete}
+
+test treqRequest-3.1 { Test PATCH request, no query } -body {
+    set r [::trequests::patch https://httpbin.org/patch]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {}
+data {}
+files {}
+form {}
+headers {
+  Accept */*
+  Accept-Encoding *
+  Host httpbin.org
+}
+json null
+url https://httpbin.org/patch}
+
+test treqRequest-4.1 { Test POST request, no data } -body {
+    set r [::trequests::post https://httpbin.org/post]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {}
+data {}
+files {}
+form {}
+headers {
+  Accept */*
+  Accept-Encoding *
+  Content-Length 0
+  Content-Type application/x-www-form-urlencoded
+  Host httpbin.org
+}
+json null
+url https://httpbin.org/post}
+
+test treqRequest-4.2 { Test POST request, -data option } -body {
+    set r [::trequests::post https://httpbin.org/post -data {foobar%20123&a=b} -data {test=true}]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {}
+data {}
+files {}
+form {a b {foobar 123} {} test true}
+headers {
+  Accept */*
+  Accept-Encoding *
+  Content-Length 26
+  Content-Type application/x-www-form-urlencoded
+  Host httpbin.org
+}
+json null
+url https://httpbin.org/post}
+
+test treqRequest-4.3 { Test POST request, -data_fields option } -body {
+    set r [::trequests::post https://httpbin.org/post -data_fields [list "foobar%20123" "" "a" "b"] -data_fields {test true}]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {}
+data {}
+files {}
+form {a b {foobar 123} {} test true}
+headers {
+  Accept */*
+  Accept-Encoding *
+  Content-Length 26
+  Content-Type application/x-www-form-urlencoded
+  Host httpbin.org
+}
+json null
+url https://httpbin.org/post}
+
+test treqRequest-4.4 { Test POST request, -data_urlencode option } -body {
+    set r [::trequests::post https://httpbin.org/post -data_urlencode {foobar%20123&a=b} -data_urlencode {test=true}]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {}
+data {}
+files {}
+form {foobar%20123&a=b {} test=true {}}
+headers {
+  Accept */*
+  Accept-Encoding *
+  Content-Length 34
+  Content-Type application/x-www-form-urlencoded
+  Host httpbin.org
+}
+json null
+url https://httpbin.org/post}
+
+test treqRequest-4.5 { Test POST request, -data_fields_urlencode option } -body {
+    set r [::trequests::post https://httpbin.org/post -data_fields_urlencode [list "foobar%20123" "" "a" "b"] -data_fields_urlencode {test true}]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {}
+data {}
+files {}
+form {a b foobar%20123 {} test true}
+headers {
+  Accept */*
+  Accept-Encoding *
+  Content-Length 28
+  Content-Type application/x-www-form-urlencoded
+  Host httpbin.org
+}
+json null
+url https://httpbin.org/post}
+
+test treqRequest-4.6 { Test POST request, -json option } -body {
+    set r [::trequests::post https://httpbin.org/post -json {{ "a": "b", "c": 1 }}]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {}
+data {{ "a": "b", "c": 1 }}
+files {}
+form {}
+headers {
+  Accept application/json
+  Accept-Encoding *
+  Content-Length 20
+  Content-Type application/json
+  Host httpbin.org
+}
+json {a b c 1}
+url https://httpbin.org/post}
+
+test treqRequest-5.1 { Test PUT request without data } -body {
+    set r [::trequests::put https://httpbin.org/put]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {}
+data {}
+files {}
+form {}
+headers {
+  Accept */*
+  Accept-Encoding *
+  Host httpbin.org
+}
+json null
+url https://httpbin.org/put}
+
+test treqRequest-5.2 { Test PUT request with data } -body {
+    set r [::trequests::put https://httpbin.org/put -data_urlencode {foobar%$123 data}]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {args {}
+data {}
+files {}
+form {{foobar%$123 data} {}}
+headers {
+  Accept */*
+  Accept-Encoding *
+  Content-Length 22
+  Content-Type application/x-www-form-urlencoded
+  Host httpbin.org
+}
+json null
+url https://httpbin.org/put}
+
+test treqRequest-6.1.1 { Test basic auth, correct credentials } -body {
+    set r [::trequests::get https://httpbin.org/basic-auth/a/b -auth {a b}]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {authenticated true
+user a}
+
+test treqRequest-6.1.2 { Test basic auth, incorrect credentials } -body {
+    set r [::trequests::get https://httpbin.org/basic-auth/a/b -auth {a wrongpass}]
+    httpbin 401 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqRequest-6.1.3 { Test basic auth, basic auth is not enabled } -body {
+    set r [::trequests::get https://httpbin.org/basic-auth/a/b -auth {a b} -auth_scheme {bearer}]
+    httpbin 401 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqRequest-7.1 { Test status code with GET request } -body {
+    set r [::trequests::get https://httpbin.org/status/202]
+    httpbin 202 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqRequest-7.2 { Test status code with PATCH request } -body {
+    set r [::trequests::patch https://httpbin.org/status/203]
+    httpbin 203 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqRequest-8.1 { Test custom headers } -body {
+    set r [::trequests::get https://httpbin.org/headers -headers [list test-Header foo X-head {some value here}]]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -match glob -result {headers {
+  Accept */*
+  Accept-Encoding *
+  Host httpbin.org
+  Test-Header foo
+  X-Head {some value here}
+}}
+
+test treqRequest-9.1 { Test gzip compression } -body {
+    set r [::trequests::get https://httpbin.org/deflate]
+    httpbin 200 $r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {deflated true
+headers {
+  Accept */*
+  Accept-Encoding *
+  Host httpbin.org
+}
+method GET}

@@ -1,0 +1,233 @@
+# Copyright Jerily LTD. All Rights Reserved.
+# SPDX-FileCopyrightText: 2024 Neofytos Dimitriou (neo@jerily.cy)
+# SPDX-License-Identifier: MIT.
+
+package require tcltest
+namespace import -force ::tcltest::test
+
+package require trequests
+
+source [file join [file dirname [info script]] common.tcl]
+
+test treqSession-1.1 { Test simple session create action } -body {
+    set s [::trequests::session]
+} -cleanup {
+    catch { $s destroy }
+    unset -nocomplain s
+} -match glob -result {::trequests::session::handler*}
+
+test treqSession-1.2 { Test simple session create/destroy actions } -body {
+    set result [list]
+    set s [::trequests::session]
+    lappend result [llength [info commands $s]]
+    $s destroy
+    lappend result [llength [info commands $s]]
+} -cleanup {
+    catch { $s destroy }
+    unset -nocomplain s result
+} -result {1 0}
+
+test treqSession-2.1 { Add request to a session, destroy session } -body {
+    set result [list]
+    set s [::trequests::session]
+    set r [$s get http://localhost -async]
+    lappend result [llength [info commands $r]]
+    $s destroy
+    lappend result [llength [info commands $r]]
+} -cleanup {
+    catch { $s destroy }
+    catch { $r destroy }
+    unset -nocomplain s r result
+} -result {1 0}
+
+test treqSession-3.1.1 { Test HEAD request } -constraints testingModeEnabled -body {
+    set result [list]
+    set s [::trequests::session]
+    set r [$s head http://localhost -async]
+    lappend result [list \
+        [$r easy_opts CURLOPT_HTTPGET] \
+        [$r easy_opts CURLOPT_NOBODY] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+    $r destroy
+    set r [$s request HEAD http://localhost -async]
+    lappend result [list \
+        [$r easy_opts CURLOPT_HTTPGET] \
+        [$r easy_opts CURLOPT_NOBODY] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+} -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain r s result
+} -result {{1 1 1 1 1} {1 1 1 1 1}}
+
+test treqSession-3.1.2 { Test GET request } -constraints testingModeEnabled -body {
+    set result [list]
+    set s [::trequests::session]
+    set r [$s get http://localhost -async]
+    lappend result [list \
+        [$r easy_opts CURLOPT_HTTPGET] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+    $r destroy
+    set r [$s request GET http://localhost -async]
+    lappend result [list \
+        [$r easy_opts CURLOPT_HTTPGET] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+} -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain r s result
+} -result {{1 1 1 1 1} {1 1 1 1 1}}
+
+test treqSession-3.1.3 { Test POST request } -constraints testingModeEnabled -body {
+    set result [list]
+    set s [::trequests::session]
+    set r [$s post http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [$r easy_opts CURLOPT_POST] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+    $r destroy
+    set r [$s request POST http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [$r easy_opts CURLOPT_POST] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+} -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain r s result
+} -result {{1 1 1 1 1} {1 1 1 1 1}}
+
+test treqSession-3.1.4 { Test PUT request } -constraints testingModeEnabled -body {
+    set result [list]
+    set s [::trequests::session]
+    set r [$s put http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+    $r destroy
+    set r [$s request PUT http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+} -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain r s result
+} -result {{1 1 1 1 PUT} {1 1 1 1 PUT}}
+
+test treqSession-3.1.5 { Test PATCH request } -constraints testingModeEnabled -body {
+    set result [list]
+    set s [::trequests::session]
+    set r [$s patch http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+    $r destroy
+    set r [$s request PATCH http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+} -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain r s result
+} -result {{1 1 1 1 PATCH} {1 1 1 1 PATCH}}
+
+test treqSession-3.1.6 { Test DELETE request } -constraints testingModeEnabled -body {
+    set result [list]
+    set s [::trequests::session]
+    set r [$s delete http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+    $r destroy
+    set r [$s request DELETE http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+} -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain r s result
+} -result {{1 1 1 1 DELETE} {1 1 1 1 DELETE}}
+
+test treqSession-3.2 { Test custom request } -constraints testingModeEnabled -body {
+    set s [::trequests::session]
+    set r [$s request XCUSTOM http://localhost -async]
+    list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]
+} -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain r s result
+} -result {1 1 1 1 XCUSTOM}
+
+test treqSession-4.1 { Test unknown request } -body {
+    set s [::trequests::session]
+    set r [$s foo http://localhost -async]
+} -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain r s
+} -returnCodes error -result {bad command "foo": must be head, get, post, put, patch, delete, request, or destroy}
+
+test treqSession-5.1 { Test cookie share } -body {
+    set s [::trequests::session]
+    $s get https://httpbin.org/cookies/set -simple -params [list freeform treqSession-5.1]
+    set r [$s get https://httpbin.org/cookies]
+    httpbin 200 $r
+}  -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain r s
+} -result {cookies {freeform treqSession-5.1}}
+
+test treqSession-6.1 { Test session option -header } -constraints testingModeEnabled -body {
+    set s [::trequests::session -headers {header1 {value here} header2 foo header3 bar}]
+    set r [$s get http://localhost -headers {HEadeR2 {new value here} header4 val4} -async]
+    $r easy_opts CURLOPT_HTTPHEADER
+}   -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain r s
+} -result {{header1: value here} {header3: bar} {HEadeR2: new value here} {header4: val4}}
+
+
+

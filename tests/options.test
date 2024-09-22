@@ -1,0 +1,1770 @@
+# Copyright Jerily LTD. All Rights Reserved.
+# SPDX-FileCopyrightText: 2024 Neofytos Dimitriou (neo@jerily.cy)
+# SPDX-License-Identifier: MIT.
+
+package require tcltest
+namespace import -force ::tcltest::test
+
+package require trequests
+
+source [file join [file dirname [info script]] common.tcl]
+
+define_constants {
+
+    CURLAUTH_NONE      0
+    CURLAUTH_BASIC     1<<0
+    CURLAUTH_DIGEST    1<<1
+    CURLAUTH_NEGOTIATE 1<<2
+    CURLAUTH_NTLM      1<<3
+    CURLAUTH_DIGEST_IE 1<<4
+    CURLAUTH_BEARER    1<<6
+    CURLAUTH_AWS_SIGV4 1<<7
+    CURLAUTH_ONLY      1<<31
+    CURLAUTH_ANY       ~$CURLAUTH_DIGEST_IE
+    CURLAUTH_ANYSAFE   ~($CURLAUTH_BASIC|$CURLAUTH_DIGEST_IE)
+
+}
+
+
+test treqOptions-1.1 { Test simple async create action without running } -body {
+    set r [::trequests::get http://localhost -async]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -match glob -result {::trequests::request::handler*}
+
+test treqOptions-1.2 { Test simple async create/destroy actions without running } -body {
+    set result [list]
+    set r [::trequests::get http://localhost -async]
+    lappend result [llength [info commands $r]]
+    $r destroy
+    lappend result [llength [info commands $r]]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r result
+} -result {1 0}
+
+test treqOptions-2.1.1 { Test HEAD request } -constraints testingModeEnabled -body {
+    set result [list]
+    set r [::trequests::head http://localhost -async]
+    lappend result [list \
+        [$r easy_opts CURLOPT_HTTPGET] \
+        [$r easy_opts CURLOPT_NOBODY] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+    $r destroy
+    set r [::trequests::request HEAD http://localhost -async]
+    lappend result [list \
+        [$r easy_opts CURLOPT_HTTPGET] \
+        [$r easy_opts CURLOPT_NOBODY] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r result
+} -result {{1 1 1 1 1} {1 1 1 1 1}}
+
+test treqOptions-2.1.2 { Test GET request } -constraints testingModeEnabled -body {
+    set result [list]
+    set r [::trequests::get http://localhost -async]
+    lappend result [list \
+        [$r easy_opts CURLOPT_HTTPGET] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+    $r destroy
+    set r [::trequests::request GET http://localhost -async]
+    lappend result [list \
+        [$r easy_opts CURLOPT_HTTPGET] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r result
+} -result {{1 1 1 1 1} {1 1 1 1 1}}
+
+test treqOptions-2.1.3 { Test POST request } -constraints testingModeEnabled -body {
+    set result [list]
+    set r [::trequests::post http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [$r easy_opts CURLOPT_POST] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+    $r destroy
+    set r [::trequests::request POST http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [$r easy_opts CURLOPT_POST] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [catch { $r easy_opts CURLOPT_CUSTOMREQUEST }]]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r result
+} -result {{1 1 1 1 1} {1 1 1 1 1}}
+
+test treqOptions-2.1.4 { Test PUT request } -constraints testingModeEnabled -body {
+    set result [list]
+    set r [::trequests::put http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+    $r destroy
+    set r [::trequests::request PUT http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r result
+} -result {{1 1 1 1 PUT} {1 1 1 1 PUT}}
+
+test treqOptions-2.1.5 { Test PATCH request } -constraints testingModeEnabled -body {
+    set result [list]
+    set r [::trequests::patch http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+    $r destroy
+    set r [::trequests::request PATCH http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r result
+} -result {{1 1 1 1 PATCH} {1 1 1 1 PATCH}}
+
+test treqOptions-2.1.6 { Test DELETE request } -constraints testingModeEnabled -body {
+    set result [list]
+    set r [::trequests::delete http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+    $r destroy
+    set r [::trequests::request DELETE http://localhost -async]
+    lappend result [list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r result
+} -result {{1 1 1 1 DELETE} {1 1 1 1 DELETE}}
+
+test treqOptions-2.2 { Test custom request } -constraints testingModeEnabled -body {
+    set r [::trequests::request XCUSTOM http://localhost -async]
+    list \
+        [catch { $r easy_opts CURLOPT_HTTPGET }] \
+        [catch { $r easy_opts CURLOPT_NOBODY }] \
+        [catch { $r easy_opts CURLOPT_POST }] \
+        [catch { $r easy_opts CURLOPT_UPLOAD }] \
+        [$r easy_opts CURLOPT_CUSTOMREQUEST]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {1 1 1 1 XCUSTOM}
+
+test treqOptions-3.1 { Test URL option, error on wrong value } -body {
+    set r [::trequests::get -foo]
+    $r error
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {cURL error: Could not resolve host: -foo}
+
+test treqOptions-4.1 { Test -data option, missing value } -body {
+    set r [::trequests::post http://localhost -data]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-data" option requires an additional argument}
+
+test treqOptions-4.2 { Test -data option, single value } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data {foo %!1} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo %!1}
+
+test treqOptions-4.3.1 { Test -data option, multiple values } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data {foo %!1} -data {bar %!2} -data {baz} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo %!1&bar %!2&baz}
+
+test treqOptions-4.3.2 { Test -data option, multiple values, empty values } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data {foo %!1} -data {} -data {baz} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo %!1&baz}
+
+test treqOptions-4.3.3 { Test -data option, multiple values, all are empty } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data {} -data {} -data {} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqOptions-4.4 { Test -data option, empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data {} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqOptions-4.5 { Test -data option, mutually exclusive options } -body {
+    set result [list]
+    catch { ::trequests::post http://localhost -data {foo %!1} -data_urlencode x } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data {foo %!1} -data_fields {x y} } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data {foo %!1} -data_fields_urlencode {x y} } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data {foo %!1} -json x } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data {foo %!1} -form {x y} } err
+    lappend result $err
+    join $result \n
+} -cleanup {
+    unset -nocomplain result err
+} -result {mutually exclusive options -data and -data_urlencode were specified
+mutually exclusive options -data and -data_fields were specified
+mutually exclusive options -data and -data_fields_urlencode were specified
+mutually exclusive options -data and -json were specified
+mutually exclusive options -data and -form were specified}
+
+test treqOptions-4.6 { Test -data option with HTTP methods } -body {
+    set result [list]
+
+    lappend result [catch { ::trequests::post http://localhost -data {x y} } r]
+    catch { $r destroy }
+    lappend result [catch { ::trequests::put http://localhost -data {x y} } r]
+    catch { $r destroy }
+    lappend result [catch { ::trequests::request XCUSTOM http://localhost -data {x y} } r]
+    catch { $r destroy }
+
+    catch { ::trequests::head http://localhost -data {x y} } err
+    lappend result $err
+    catch { ::trequests::get http://localhost -data {x y} } err
+    lappend result $err
+    catch { ::trequests::patch http://localhost -data {x y} } err
+    lappend result $err
+    catch { ::trequests::delete http://localhost -data {x y} } err
+    lappend result $err
+
+    join $result \n
+} -cleanup {
+    unset -nocomplain r result err
+} -result {0
+0
+0
+option -data is incompatible with HTTP method HEAD
+option -data is incompatible with HTTP method GET
+option -data is incompatible with HTTP method PATCH
+option -data is incompatible with HTTP method DELETE}
+
+test treqOptions-5.1 { Test -json option, missing value } -body {
+    set r [::trequests::post http://localhost -json]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-json" option requires an additional argument}
+
+test treqOptions-5.2 { Test -json option, single value } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -json {foo %!1} -async]
+    list [$r easy_opts CURLOPT_POSTFIELDS] [$r easy_opts CURLOPT_HTTPHEADER]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{foo %!1} {{Accept: application/json} {Content-Type: application/json}}}
+
+test treqOptions-5.3 { Test -json option, multiple values } -body {
+    set r [::trequests::post http://localhost -json {foo %!1} -json {bar %!2} -json {baz}]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-json option specified multiple times}
+
+test treqOptions-5.4 { Test -json option, empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -json {} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqOptions-5.5 { Test -json option, mutually exclusive options } -body {
+    set result [list]
+    catch { ::trequests::post http://localhost -json {foo %!1} -data_urlencode x } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -json {foo %!1} -data_fields {x y} } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -json {foo %!1} -data_fields_urlencode {x y} } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -json {foo %!1} -data x } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -json {foo %!1} -form {x y} } err
+    lappend result $err
+    join $result \n
+} -cleanup {
+    unset -nocomplain result err
+} -result {mutually exclusive options -data_urlencode and -json were specified
+mutually exclusive options -data_fields and -json were specified
+mutually exclusive options -data_fields_urlencode and -json were specified
+mutually exclusive options -data and -json were specified
+mutually exclusive options -json and -form were specified}
+
+test treqOptions-5.6 { Test -json option with HTTP methods } -body {
+    set result [list]
+
+    lappend result [catch { ::trequests::post http://localhost -json {x y} } r]
+    catch { $r destroy }
+    lappend result [catch { ::trequests::put http://localhost -json {x y} } r]
+    catch { $r destroy }
+    lappend result [catch { ::trequests::request XCUSTOM http://localhost -json {x y} } r]
+    catch { $r destroy }
+
+    catch { ::trequests::head http://localhost -json {x y} } err
+    lappend result $err
+    catch { ::trequests::get http://localhost -json {x y} } err
+    lappend result $err
+    catch { ::trequests::patch http://localhost -json {x y} } err
+    lappend result $err
+    catch { ::trequests::delete http://localhost -json {x y} } err
+    lappend result $err
+
+    join $result \n
+} -cleanup {
+    unset -nocomplain r result err
+} -result {0
+0
+0
+option -json is incompatible with HTTP method HEAD
+option -json is incompatible with HTTP method GET
+option -json is incompatible with HTTP method PATCH
+option -json is incompatible with HTTP method DELETE}
+
+test treqOptions-6.1 { Test -data_urlencode option, missing value } -body {
+    set r [::trequests::post http://localhost -data_urlencode]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-data_urlencode" option requires an additional argument}
+
+test treqOptions-6.2 { Test -data_urlencode option, single value } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_urlencode {foo %!1} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo%20%25%211}
+
+test treqOptions-6.3.1 { Test -data_urlencode option, multiple values } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_urlencode {foo %!1} -data_urlencode {bar %!2} -data_urlencode {baz} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo%20%25%211&bar%20%25%212&baz}
+
+test treqOptions-6.3.2 { Test -data_urlencode option, multiple values, empty values } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_urlencode {foo %!1} -data_urlencode {} -data_urlencode {baz} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo%20%25%211&baz}
+
+test treqOptions-6.3.3 { Test -data_urlencode option, multiple values, all are empty } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_urlencode {} -data_urlencode {} -data_urlencode {} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqOptions-6.4 { Test -data_urlencode option, empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_urlencode {} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqOptions-6.5 { Test -data_urlencode option, mutually exclusive options } -body {
+    set result [list]
+    catch { ::trequests::post http://localhost -data_urlencode {foo %!1} -data x } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data_urlencode {foo %!1} -data_fields {x y} } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data_urlencode {foo %!1} -data_fields_urlencode {x y} } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data_urlencode {foo %!1} -json x } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data_urlencode {foo %!1} -form {x y} } err
+    lappend result $err
+    join $result \n
+} -cleanup {
+    unset -nocomplain result err
+} -result {mutually exclusive options -data and -data_urlencode were specified
+mutually exclusive options -data_urlencode and -data_fields were specified
+mutually exclusive options -data_urlencode and -data_fields_urlencode were specified
+mutually exclusive options -data_urlencode and -json were specified
+mutually exclusive options -data_urlencode and -form were specified}
+
+test treqOptions-6.6 { Test -data_urlencode option with HTTP methods } -body {
+    set result [list]
+
+    lappend result [catch { ::trequests::post http://localhost -data_urlencode {x y} } r]
+    catch { $r destroy }
+    lappend result [catch { ::trequests::put http://localhost -data_urlencode {x y} } r]
+    catch { $r destroy }
+    lappend result [catch { ::trequests::request XCUSTOM http://localhost -data_urlencode {x y} } r]
+    catch { $r destroy }
+
+    catch { ::trequests::head http://localhost -data_urlencode {x y} } err
+    lappend result $err
+    catch { ::trequests::get http://localhost -data_urlencode {x y} } err
+    lappend result $err
+    catch { ::trequests::patch http://localhost -data_urlencode {x y} } err
+    lappend result $err
+    catch { ::trequests::delete http://localhost -data_urlencode {x y} } err
+    lappend result $err
+
+    join $result \n
+} -cleanup {
+    unset -nocomplain r result err
+} -result {0
+0
+0
+option -data_urlencode is incompatible with HTTP method HEAD
+option -data_urlencode is incompatible with HTTP method GET
+option -data_urlencode is incompatible with HTTP method PATCH
+option -data_urlencode is incompatible with HTTP method DELETE}
+
+test treqOptions-7.1 { Test -data_fields option, missing value } -body {
+    set r [::trequests::post http://localhost -data_fields]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-data_fields" option requires an additional argument}
+
+test treqOptions-7.2.1 { Test -data_fields option, single value, 1 correct key-val pair } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_fields {foo %!1} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo=%!1}
+
+test treqOptions-7.2.2 { Test -data_fields option, single value, 3 correct key-val pairs } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_fields {foo %!1 bar %% foo {qux with space}} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo=%!1&bar=%%&foo=qux with space}
+
+test treqOptions-7.2.3 { Test -data_fields option, single value, incorrect key-val pair } -body {
+    set r [::trequests::post http://localhost -data_fields {foo %!1 bar %% foo} -async]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {an even numbered list is expected for option -data_fields, but got a list of 5 items}
+
+test treqOptions-7.3.1 { Test -data_fields option, multiple values, correct key-val pairs } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_fields {foo %!1} -data_fields {bar %!2 key {val }} -data_fields {baz 123} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo=%!1&bar=%!2&key=val &baz=123}
+
+test treqOptions-7.3.2 { Test -data_fields option, multiple values, empty values } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_fields {foo %!1} -data_fields {} -data_fields {baz 123} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo=%!1&baz=123}
+
+test treqOptions-7.3.3 { Test -data_fields option, multiple values, all are empty } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_fields {} -data_fields {} -data_fields {} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqOptions-7.3.4 { Test -data_fields option, multiple values, incorrect key-val pair } -body {
+    set r [::trequests::post http://localhost -data_fields {foo %!1} -data_fields {bar key {val }} -data_fields {baz 123} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {an even numbered list is expected for option -data_fields, but got a list of 3 items}
+
+test treqOptions-7.4 { Test -data_fields option, empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_fields {} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqOptions-7.5 { Test -data_fields option, mutually exclusive options } -body {
+    set result [list]
+    catch { ::trequests::post http://localhost -data_fields {foo %!1} -data_urlencode x } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data_fields {foo %!1} -data {x y} } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data_fields {foo %!1} -data_fields_urlencode {x y} } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data_fields {foo %!1} -json x } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data_fields {foo %!1} -form {x y} } err
+    lappend result $err
+    join $result \n
+} -cleanup {
+    unset -nocomplain result err
+} -result {mutually exclusive options -data_urlencode and -data_fields were specified
+mutually exclusive options -data and -data_fields were specified
+mutually exclusive options -data_fields and -data_fields_urlencode were specified
+mutually exclusive options -data_fields and -json were specified
+mutually exclusive options -data_fields and -form were specified}
+
+test treqOptions-7.6 { Test -data_fields option with HTTP methods } -body {
+    set result [list]
+
+    lappend result [catch { ::trequests::post http://localhost -data_fields {x y} } r]
+    catch { $r destroy }
+    lappend result [catch { ::trequests::put http://localhost -data_fields {x y} } r]
+    catch { $r destroy }
+    lappend result [catch { ::trequests::request XCUSTOM http://localhost -data_fields {x y} } r]
+    catch { $r destroy }
+
+    catch { ::trequests::head http://localhost -data_fields {x y} } err
+    lappend result $err
+    catch { ::trequests::get http://localhost -data_fields {x y} } err
+    lappend result $err
+    catch { ::trequests::patch http://localhost -data_fields {x y} } err
+    lappend result $err
+    catch { ::trequests::delete http://localhost -data_fields {x y} } err
+    lappend result $err
+
+    join $result \n
+} -cleanup {
+    unset -nocomplain r result err
+} -result {0
+0
+0
+option -data_fields is incompatible with HTTP method HEAD
+option -data_fields is incompatible with HTTP method GET
+option -data_fields is incompatible with HTTP method PATCH
+option -data_fields is incompatible with HTTP method DELETE}
+
+test treqOptions-8.1 { Test -data_fields_urlencode option, missing value } -body {
+    set r [::trequests::post http://localhost -data_fields_urlencode]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-data_fields_urlencode" option requires an additional argument}
+
+test treqOptions-8.2.1 { Test -data_fields_urlencode option, single value, 1 correct key-val pair } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_fields_urlencode {foo %!1} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo=%25%211}
+
+test treqOptions-8.2.2 { Test -data_fields_urlencode option, single value, 3 correct key-val pairs } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_fields_urlencode {foo %!1 bar %% foo {qux with space}} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo=%25%211&bar=%25%25&foo=qux%20with%20space}
+
+test treqOptions-8.2.3 { Test -data_fields_urlencode option, single value, incorrect key-val pair } -body {
+    set r [::trequests::post http://localhost -data_fields_urlencode {foo %!1 bar %% foo} -async]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {an even numbered list is expected for option -data_fields_urlencode, but got a list of 5 items}
+
+test treqOptions-8.3.1 { Test -data_fields_urlencode option, multiple values, correct key-val pairs } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_fields_urlencode {foo %!1} -data_fields_urlencode {bar %!2 key {val }} -data_fields_urlencode {baz 123} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo=%25%211&bar=%25%212&key=val%20&baz=123}
+
+test treqOptions-8.3.2 { Test -data_fields_urlencode option, multiple values, empty values } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_fields_urlencode {foo %!1} -data_fields_urlencode {} -data_fields_urlencode {baz 123} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo=%25%211&baz=123}
+
+test treqOptions-8.3.3 { Test -data_fields_urlencode option, multiple values, all are empty } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_fields_urlencode {} -data_fields_urlencode {} -data_fields_urlencode {} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqOptions-8.3.4 { Test -data_fields_urlencode option, multiple values, incorrect key-val pair } -body {
+    set r [::trequests::post http://localhost -data_fields_urlencode {foo %!1} -data_fields_urlencode {bar key {val }} -data_fields_urlencode {baz 123} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {an even numbered list is expected for option -data_fields_urlencode, but got a list of 3 items}
+
+test treqOptions-8.4 { Test -data_fields_urlencode option, empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -data_fields_urlencode {} -async]
+    $r easy_opts CURLOPT_POSTFIELDS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqOptions-8.5 { Test -data_fields_urlencode option, mutually exclusive options } -body {
+    set result [list]
+    catch { ::trequests::post http://localhost -data_fields_urlencode {foo %!1} -data_urlencode x } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data_fields_urlencode {foo %!1} -data {x y} } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data_fields_urlencode {foo %!1} -data_fields {x y} } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data_fields_urlencode {foo %!1} -json x } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -data_fields_urlencode {foo %!1} -form {x y} } err
+    lappend result $err
+    join $result \n
+} -cleanup {
+    unset -nocomplain result err
+} -result {mutually exclusive options -data_urlencode and -data_fields_urlencode were specified
+mutually exclusive options -data and -data_fields_urlencode were specified
+mutually exclusive options -data_fields and -data_fields_urlencode were specified
+mutually exclusive options -data_fields_urlencode and -json were specified
+mutually exclusive options -data_fields_urlencode and -form were specified}
+
+test treqOptions-8.6 { Test -data_fields_urlencode option with HTTP methods } -body {
+    set result [list]
+
+    lappend result [catch { ::trequests::post http://localhost -data_fields_urlencode {x y} } r]
+    catch { $r destroy }
+    lappend result [catch { ::trequests::put http://localhost -data_fields_urlencode {x y} } r]
+    catch { $r destroy }
+    lappend result [catch { ::trequests::request XCUSTOM http://localhost -data_fields_urlencode {x y} } r]
+    catch { $r destroy }
+
+    catch { ::trequests::head http://localhost -data_fields_urlencode {x y} } err
+    lappend result $err
+    catch { ::trequests::get http://localhost -data_fields_urlencode {x y} } err
+    lappend result $err
+    catch { ::trequests::patch http://localhost -data_fields_urlencode {x y} } err
+    lappend result $err
+    catch { ::trequests::delete http://localhost -data_fields_urlencode {x y} } err
+    lappend result $err
+
+    join $result \n
+} -cleanup {
+    unset -nocomplain r result err
+} -result {0
+0
+0
+option -data_fields_urlencode is incompatible with HTTP method HEAD
+option -data_fields_urlencode is incompatible with HTTP method GET
+option -data_fields_urlencode is incompatible with HTTP method PATCH
+option -data_fields_urlencode is incompatible with HTTP method DELETE}
+
+test treqOptions-9.1 { Test -params option, missing value } -body {
+    set r [::trequests::get http://localhost -params]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-params" option requires an additional argument}
+
+test treqOptions-9.2.1 { Test -params option, single value, 1 correct key-val pair } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -params {foo %!1} -async]
+    $r easy_opts CURLUPART_QUERY
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo=%25%211}
+
+test treqOptions-9.2.2 { Test -params option, single value, 3 correct key-val pairs } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -params {foo %!1 bar %% foo {qux with space}} -async]
+    $r easy_opts CURLUPART_QUERY
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo=%25%211&bar=%25%25&foo=qux%20with%20space}
+
+test treqOptions-9.2.3 { Test -params option, single value, incorrect key-val pair } -body {
+    set r [::trequests::get http://localhost -params {foo %!1 bar %% foo} -async]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {an even numbered list is expected for option -params, but got a list of 5 items}
+
+test treqOptions-9.3.1 { Test -params option, multiple values, correct key-val pairs } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -params {foo %!1} -params {bar %!2 key {val }} -params {baz 123} -async]
+    $r easy_opts CURLUPART_QUERY
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo=%25%211&bar=%25%212&key=val%20&baz=123}
+
+test treqOptions-9.3.2 { Test -params option, multiple values, empty values } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -params {foo %!1} -params {} -params {baz 123} -async]
+    $r easy_opts CURLUPART_QUERY
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo=%25%211&baz=123}
+
+test treqOptions-9.3.3 { Test -params option, multiple values, all are empty } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -params {} -params {} -params {} -async]
+    $r easy_opts CURLUPART_QUERY
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {no registered easy option "CURLUPART_QUERY"}
+
+test treqOptions-9.3.4 { Test -params option, multiple values, incorrect key-val pair } -body {
+    set r [::trequests::get http://localhost -params {foo %!1} -params {bar key {val }} -params {baz 123} -async]
+    $r easy_opts CURLUPART_QUERY
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {an even numbered list is expected for option -params, but got a list of 3 items}
+
+test treqOptions-9.4 { Test -params option, empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -params {} -async]
+    $r easy_opts CURLUPART_QUERY
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {no registered easy option "CURLUPART_QUERY"}
+
+test treqOptions-9.5 { Test -params option, mutually exclusive options } -body {
+    set result [list]
+    catch { ::trequests::get http://localhost -params {foo %!1} -params_raw x } err
+    lappend result $err
+    join $result \n
+} -cleanup {
+    unset -nocomplain result err
+} -result {mutually exclusive options -params and -params_raw were specified}
+
+test treqOptions-10.1 { Test -params_raw option, missing value } -body {
+    set r [::trequests::get http://localhost -params_raw]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-params_raw" option requires an additional argument}
+
+test treqOptions-10.2 { Test -params_raw option, single value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -params_raw {foo %!1} -async]
+    $r easy_opts CURLUPART_QUERY
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo %!1}
+
+test treqOptions-10.3.1 { Test -params_raw option, multiple values } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -params_raw {foo %!1} -params_raw {bar %!2} -params_raw {baz} -async]
+    $r easy_opts CURLUPART_QUERY
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo %!1&bar %!2&baz}
+
+test treqOptions-10.3.2 { Test -params_raw option, multiple values, empty values } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -params_raw {foo %!1} -params_raw {} -params_raw {baz} -async]
+    $r easy_opts CURLUPART_QUERY
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo %!1&baz}
+
+test treqOptions-10.3.3 { Test -params_raw option, multiple values, all are empty } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -params_raw {} -params_raw {} -params_raw {} -async]
+    $r easy_opts CURLUPART_QUERY
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {no registered easy option "CURLUPART_QUERY"}
+
+test treqOptions-10.4 { Test -params_raw option, empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -params_raw {} -async]
+    $r easy_opts CURLUPART_QUERY
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {no registered easy option "CURLUPART_QUERY"}
+
+test treqOptions-11.1 { Test -headers option, missing value } -body {
+    set r [::trequests::get http://localhost -headers]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-headers" option requires an additional argument}
+
+test treqOptions-11.2.1 { Test -headers option, single value, 1 correct key-val pair } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -headers {header1 {value here}} -async]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{header1: value here}}
+
+test treqOptions-11.2.2 { Test -headers option, single value, 3 correct key-val pairs } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -headers {header1 {value here} header2 value2 header3 {%%%^!}} -async]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{header1: value here} {header2: value2} {header3: %%%^!}}
+
+test treqOptions-11.2.3 { Test -headers option, single value, correct key-val pairs, duplicates } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -headers {header1 {value here} header2 value2 header3 {%%%^!} Header2 Value2} -async]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{header1: value here} {header3: %%%^!} {Header2: Value2}}
+
+test treqOptions-11.2.4 { Test -headers option, single value, incorrect key-val pair } -body {
+    set r [::trequests::get http://localhost -headers {header1 {value here} header2 value2 header3} -async]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-headers option is expected to be a valid dict, but got: missing value to go with key}
+
+test treqOptions-11.3.1 { Test -headers option, multiple values, correct key-val pairs } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -headers {header1 {value here}} -headers {header2 value2 header3 {%%%^!}} -async]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{header1: value here} {header2: value2} {header3: %%%^!}}
+
+test treqOptions-11.3.2 { Test -headers option, multiple values, correct key-val pairs, duplicates } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -headers {header1 {value here}} -headers {header2 value2 heADer1 {%%%^!}} -headers {Header2 Value2} -async]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{heADer1: %%%^!} {Header2: Value2}}
+
+test treqOptions-11.3.3 { Test -headers option, multiple values, empty values } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -headers {header1 {value here}} -headers {} -headers {header2 value2 header3 {%%%^!}} -async]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{header1: value here} {header2: value2} {header3: %%%^!}}
+
+test treqOptions-11.3.4 { Test -headers option, multiple values, all are empty } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -headers {} -headers {} -headers {} -async]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {no registered easy option "CURLOPT_HTTPHEADER"}
+
+test treqOptions-11.3.5 { Test -headers option, multiple values, incorrect key-val pair } -body {
+    set r [::trequests::get http://localhost -headers {header1 {value here}} -headers {} -headers {header2 value2 header3 {%%%^!} foo} -async]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-headers option is expected to be a valid dict, but got: missing value to go with key}
+
+test treqOptions-11.4 { Test -headers option, empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -headers {} -async]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {no registered easy option "CURLOPT_HTTPHEADER"}
+
+# We cannot verify parts of cur_mime and their contents. So here we will just
+# keep track of whether the mime parts are defined or not. Also we hope
+# memory leak hunter will catch possible leaks.
+
+test treqOptions-12.1 { Test -form option, missing value } -body {
+    set r [::trequests::post http://localhost -form]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-form" option requires an additional argument}
+
+test treqOptions-12.2.1 { Test -form option, single value, 1 correct key-val pair } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -form {header1 {value here}} -async]
+    $r easy_opts CURLOPT_MIMEPOST
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result "pointer"
+
+test treqOptions-12.2.2 { Test -form option, single value, 3 correct key-val pairs } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -form {header1 {value here} header2 value2 header3 {%%%^!}} -async]
+    $r easy_opts CURLOPT_MIMEPOST
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result "pointer"
+
+test treqOptions-12.2.3 { Test -form option, single value, correct key-val pairs, duplicates } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -form {header1 {value here} header2 value2 header3 {%%%^!} Header2 Value2} -async]
+    $r easy_opts CURLOPT_MIMEPOST
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result "pointer"
+
+test treqOptions-12.2.4 { Test -form option, single value, incorrect key-val pair } -body {
+    set r [::trequests::post http://localhost -form {header1 {value here} header2 value2 header3} -async]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-form option is expected to be a valid dict, but got: missing value to go with key}
+
+test treqOptions-12.3.1 { Test -form option, multiple values, correct key-val pairs } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -form {header1 {value here}} -form {header2 value2 header3 {%%%^!}} -async]
+    $r easy_opts CURLOPT_MIMEPOST
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result "pointer"
+
+test treqOptions-12.3.2 { Test -form option, multiple values, correct key-val pairs, duplicates } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -form {header1 {value here}} -form {header2 value2 heADer1 {%%%^!}} -form {Header2 Value2} -async]
+    $r easy_opts CURLOPT_MIMEPOST
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result "pointer"
+
+test treqOptions-12.3.3 { Test -form option, multiple values, empty values } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -form {header1 {value here}} -form {} -form {header2 value2 header3 {%%%^!}} -async]
+    $r easy_opts CURLOPT_MIMEPOST
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result "pointer"
+
+test treqOptions-12.3.4 { Test -form option, multiple values, all are empty } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -form {} -form {} -form {} -async]
+    $r easy_opts CURLOPT_MIMEPOST
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {no registered easy option "CURLOPT_MIMEPOST"}
+
+test treqOptions-12.3.5 { Test -form option, multiple values, incorrect key-val pair } -body {
+    set r [::trequests::post http://localhost -form {header1 {value here}} -form {} -form {header2 value2 header3 {%%%^!} foo} -async]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-form option is expected to be a valid dict, but got: missing value to go with key}
+
+test treqOptions-12.4 { Test -form option, empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::post http://localhost -form {} -async]
+    $r easy_opts CURLOPT_MIMEPOST
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {no registered easy option "CURLOPT_MIMEPOST"}
+
+test treqOptions-12.5 { Test -form option, mutually exclusive options } -body {
+    set result [list]
+    catch { ::trequests::post http://localhost -form {foo x} -data_urlencode x } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -form {foo x} -data {x y} } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -form {foo x} -data_fields {x y} } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -form {foo x} -json x } err
+    lappend result $err
+    catch { ::trequests::post http://localhost -form {foo x} -data_fields_urlencode {x y} } err
+    lappend result $err
+    join $result \n
+} -cleanup {
+    unset -nocomplain result err
+} -result {mutually exclusive options -data_urlencode and -form were specified
+mutually exclusive options -data and -form were specified
+mutually exclusive options -data_fields and -form were specified
+mutually exclusive options -json and -form were specified
+mutually exclusive options -data_fields_urlencode and -form were specified}
+
+test treqOptions-12.6 { Test -form option with HTTP methods } -body {
+    set result [list]
+
+    lappend result [catch { ::trequests::post http://localhost -form {x y} } r]
+    catch { $r destroy }
+    lappend result [catch { ::trequests::put http://localhost -form {x y} } r]
+    catch { $r destroy }
+    lappend result [catch { ::trequests::request XCUSTOM http://localhost -form {x y} } r]
+    catch { $r destroy }
+
+    catch { ::trequests::head http://localhost -form {x y} } err
+    lappend result $err
+    catch { ::trequests::get http://localhost -form {x y} } err
+    lappend result $err
+    catch { ::trequests::patch http://localhost -form {x y} } err
+    lappend result $err
+    catch { ::trequests::delete http://localhost -form {x y} } err
+    lappend result $err
+
+    join $result \n
+} -cleanup {
+    unset -nocomplain r result err
+} -result {0
+0
+0
+option -form is incompatible with HTTP method HEAD
+option -form is incompatible with HTTP method GET
+option -form is incompatible with HTTP method PATCH
+option -form is incompatible with HTTP method DELETE}
+
+test treqOptions-13.1 { Test -verbose option, missing value } -body {
+    set r [::trequests::get http://localhost -verbose]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-verbose" option requires an additional argument}
+
+test treqOptions-13.2 { Test -verbose option, wrong value } -body {
+    set r [::trequests::get http://localhost -verbose foo]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-verbose option is expected to be a boolean, but got: 'foo'}
+
+test treqOptions-13.3 { Test -verbose option, value: true } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -verbose 1 -async]
+    $r easy_opts CURLOPT_VERBOSE
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 1
+
+test treqOptions-13.4 { Test -verbose option, value: false } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -verbose false -async]
+    $r easy_opts CURLOPT_VERBOSE
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 0
+
+test treqOptions-14.1 { Test -allow_redirects option, missing value } -body {
+    set r [::trequests::get http://localhost -allow_redirects]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-allow_redirects" option requires an additional argument}
+
+test treqOptions-14.2 { Test -allow_redirects option, wrong value } -body {
+    set r [::trequests::get http://localhost -allow_redirects baz]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-allow_redirects option is expected to be a boolean, but got: 'baz'}
+
+test treqOptions-14.3 { Test -allow_redirects option, value: true } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -allow_redirects yes -async]
+    $r easy_opts CURLOPT_FOLLOWLOCATION
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 1
+
+test treqOptions-14.4 { Test -allow_redirects option, value: false } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -allow_redirects 0 -async]
+    $r easy_opts CURLOPT_FOLLOWLOCATION
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 0
+
+test treqOptions-15.1 { Test -callback option, missing value } -body {
+    set r [::trequests::get http://localhost -async -callback]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-callback" option requires an additional argument}
+
+test treqOptions-15.2 { Test -callback option, wrong list } -body {
+    set r [::trequests::get http://localhost -async -callback "\{"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-callback option is expected to be a list, but got: unmatched open brace in list}
+
+test treqOptions-15.3 { Test -callback option, not async } -body {
+    set r [::trequests::get http://localhost -callback "foo"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-callback option can only be used for async requests}
+
+test treqOptions-15.4 { Test -callback option } -body {
+    catch { ::trequests::get http://localhost -async -callback "foo" } r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 0
+
+test treqOptions-16.1 { Test -callback_debug option, missing value } -body {
+    set r [::trequests::get http://localhost -callback_debug]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-callback_debug" option requires an additional argument}
+
+test treqOptions-16.2 { Test -callback_debug option, wrong list } -body {
+    set r [::trequests::get http://localhost -callback_debug "\{"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-callback_debug option is expected to be a list, but got: unmatched open brace in list}
+
+test treqOptions-16.3 { Test -callback_debug option } -body {
+    catch { ::trequests::get http://localhost -async -callback_debug "foo" } r
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 0
+
+test treqOptions-16.1 { Test -auth_scheme option, missing value } -body {
+    set r [::trequests::get http://localhost -async -auth_scheme]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-auth_scheme" option requires an additional argument}
+
+test treqOptions-16.2 { Test -auth_scheme option, wrong value } -body {
+    set r [::trequests::get http://localhost -async -auth_scheme x]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {bad auth scheme option "x": must be any, anysafe, only, basic, digest, digest_ie, bearer, negotiate, ntlm, or aws_sigv4}
+
+test treqOptions-16.3.1 { Test -auth_scheme option, single option, any } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_scheme any]
+    $r easy_opts CURLOPT_HTTPAUTH
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result $CURLAUTH_ANY
+
+test treqOptions-16.3.2 { Test -auth_scheme option, single option, anysafe } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_scheme anysafe]
+    $r easy_opts CURLOPT_HTTPAUTH
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result $CURLAUTH_ANYSAFE
+
+test treqOptions-16.3.3 { Test -auth_scheme option, single option, only } -body {
+    set r [::trequests::get http://localhost -async -auth_scheme only]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"only" option can be specified in conjunction with one specific authentication value}
+
+test treqOptions-16.3.4 { Test -auth_scheme option, single option, basic } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_scheme basic]
+    $r easy_opts CURLOPT_HTTPAUTH
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result $CURLAUTH_BASIC
+
+test treqOptions-16.3.5 { Test -auth_scheme option, single option, digest } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_scheme digest]
+    $r easy_opts CURLOPT_HTTPAUTH
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result $CURLAUTH_DIGEST
+
+test treqOptions-16.3.6 { Test -auth_scheme option, single option, digest_ie } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_scheme digest_ie]
+    $r easy_opts CURLOPT_HTTPAUTH
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result $CURLAUTH_DIGEST_IE
+
+test treqOptions-16.3.7 { Test -auth_scheme option, single option, bearer } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_scheme bearer]
+    $r easy_opts CURLOPT_HTTPAUTH
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result $CURLAUTH_BEARER
+
+test treqOptions-16.3.8.1 { Test -auth_scheme option, single option, negotiate } -constraints { testingModeEnabled curlFeatureEnabledGSS } -body {
+    set r [::trequests::get http://localhost -async -auth_scheme negotiate]
+    $r easy_opts CURLOPT_HTTPAUTH
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result $CURLAUTH_NEGOTIATE
+
+test treqOptions-16.3.8.2 { Test -auth_scheme option, single option, negotiate } -constraints { testingModeEnabled curlFeatureDisabledGSS } -body {
+    set r [::trequests::get http://localhost -auth_scheme negotiate]
+    $r error
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {curl_easy_setopt(CURLOPT_HTTPAUTH) failed: A requested feature, protocol or option was not found built-in in this libcurl due to a build-time decision.}
+
+test treqOptions-16.3.9 { Test -auth_scheme option, single option, ntlm } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_scheme ntlm]
+    $r easy_opts CURLOPT_HTTPAUTH
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result $CURLAUTH_NTLM
+
+test treqOptions-16.3.10 { Test -auth_scheme option, single option, aws_sigv4 } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_scheme aws_sigv4]
+    $r easy_opts CURLOPT_HTTPAUTH
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result $CURLAUTH_AWS_SIGV4
+
+test treqOptions-16.4.1 { Test -auth_scheme option, any + other option } -body {
+    set r [::trequests::get http://localhost -async -auth_scheme {any basic}]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"any" option is allowed if it is the only value}
+
+test treqOptions-16.4.2 { Test -auth_scheme option, anysafe + other option } -body {
+    set r [::trequests::get http://localhost -async -auth_scheme {anysafe basic}]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"anysafe" option is allowed if it is the only value}
+
+test treqOptions-16.5.1 { Test -auth_scheme option, only + other option, variant #1 } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_scheme {only basic}]
+    $r easy_opts CURLOPT_HTTPAUTH
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result [expr { $CURLAUTH_BASIC | $CURLAUTH_ONLY }]
+
+test treqOptions-16.5.2 { Test -auth_scheme option, only + other option, variant #2 } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_scheme {only digest}]
+    $r easy_opts CURLOPT_HTTPAUTH
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result [expr { $CURLAUTH_DIGEST | $CURLAUTH_ONLY }]
+
+test treqOptions-16.5.3 { Test -auth_scheme option, only + several other options } -body {
+    set r [::trequests::get http://localhost -async -auth_scheme {only digest basic}]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"only" option can be specified in conjunction with one specific authentication value}
+
+test treqOptions-16.6 { Test -auth_scheme option, multiple options } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_scheme {basic digest bearer}]
+    $r easy_opts CURLOPT_HTTPAUTH
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result [expr { $CURLAUTH_DIGEST | $CURLAUTH_BASIC | $CURLAUTH_BEARER }]
+
+test treqOptions-17.1 { Test -auth_token option, missing value } -body {
+    set r [::trequests::get http://localhost -async -auth_token]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-auth_token" option requires an additional argument}
+
+test treqOptions-17.2 { Test -auth_token option, empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_token ""]
+    $r easy_opts CURLOPT_XOAUTH2_BEARER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {}
+
+test treqOptions-17.3 { Test -auth_token option, non-empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_token {1234$    \(!#}]
+    $r easy_opts CURLOPT_XOAUTH2_BEARER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {1234$    \(!#}
+
+test treqOptions-18.1 { Test -auth_aws_sigv4 option, missing value } -body {
+    set r [::trequests::get http://localhost -async -auth_aws_sigv4]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-auth_aws_sigv4" option requires an additional argument}
+
+test treqOptions-18.2 { Test -auth_aws_sigv4 option, empty value } -body {
+    set r [::trequests::get http://localhost -async -auth_aws_sigv4 {}]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-auth_aws_sigv4 option cannot be an empty list}
+
+test treqOptions-18.3 { Test -auth_aws_sigv4 option, bad list } -body {
+    set r [::trequests::get http://localhost -async -auth_aws_sigv4 "\{"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-auth_aws_sigv4 option is expected to be a list, but got: unmatched open brace in list}
+
+test treqOptions-18.4.1 { Test -auth_aws_sigv4 option, a single value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_aws_sigv4 foo]
+    $r easy_opts CURLOPT_AWS_SIGV4
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo}
+
+test treqOptions-18.4.2 { Test -auth_aws_sigv4 option, 4 values } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth_aws_sigv4 {foo bar baz qux}]
+    $r easy_opts CURLOPT_AWS_SIGV4
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {foo:bar:baz:qux}
+
+test treqOptions-18.4.3 { Test -auth_aws_sigv4 option, 5 values } -body {
+    set r [::trequests::get http://localhost -async -auth_aws_sigv4 {foo bar baz qux foo}]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-auth_aws_sigv4 option is expected to be a list with number of elements from 1 to 4, but got a list with 5 elements}
+
+test treqOptions-19.1 { Test -auth option, missing value } -body {
+    set r [::trequests::get http://localhost -async -auth]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-auth" option requires an additional argument}
+
+test treqOptions-19.2 { Test -auth option, empty value } -body {
+    set r [::trequests::get http://localhost -async -auth ""]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-auth option is expected to be a list with 2 elements, but got a list with 0 elements}
+
+test treqOptions-19.3 { Test -auth option, bad list value } -body {
+    set r [::trequests::get http://localhost -async -auth "\{"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-auth option is expected to be a list with 2 elements, but got: unmatched open brace in list}
+
+test treqOptions-19.4 { Test -auth option, 1 list element } -body {
+    set r [::trequests::get http://localhost -async -auth "a"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-auth option is expected to be a list with 2 elements, but got a list with 1 element}
+
+test treqOptions-19.5 { Test -auth option, 3 list elements } -body {
+    set r [::trequests::get http://localhost -async -auth "a b c"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-auth option is expected to be a list with 2 elements, but got a list with 3 elements}
+
+test treqOptions-19.6 { Test -auth option, correct value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -auth {foo bar}]
+    join [list : [$r easy_opts CURLOPT_USERNAME] : [$r easy_opts CURLOPT_PASSWORD] :] ""
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {:foo:bar:}
+
+test treqOptions-20.1 { Test -accept option, missing value } -body {
+    set r [::trequests::get http://localhost -accept]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-accept" option requires an additional argument}
+
+test treqOptions-20.2 { Test -accept option, empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -accept {}]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{Accept: }}
+
+test treqOptions-20.3 { Test -accept option, non-empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -accept {foo bar}]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{Accept: foo bar}}
+
+test treqOptions-20.4 { Test -accept option, json value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -accept {json}]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{Accept: application/json}}
+
+test treqOptions-21.1 { Test -content_type option, missing value } -body {
+    set r [::trequests::get http://localhost -content_type]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-content_type" option requires an additional argument}
+
+test treqOptions-21.2 { Test -content_type option, empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -content_type {}]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{Content-Type: }}
+
+test treqOptions-21.3 { Test -content_type option, non-empty value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -content_type {foo bar}]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{Content-Type: foo bar}}
+
+test treqOptions-21.4 { Test -content_type option, json value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -content_type {json}]
+    $r easy_opts CURLOPT_HTTPHEADER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {{Content-Type: application/json}}
+
+test treqOptions-22.1 { Test -verify_host option, missing value } -body {
+    set r [::trequests::get http://localhost -verify_host]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-verify_host" option requires an additional argument}
+
+test treqOptions-22.2 { Test -verify_host option, empty value } -body {
+    set r [::trequests::get http://localhost -verify_host ""]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-verify_host option is expected to be a boolean, but got: ''}
+
+test treqOptions-22.3 { Test -verify_host option, bad value } -body {
+    set r [::trequests::get http://localhost -verify_host "x"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-verify_host option is expected to be a boolean, but got: 'x'}
+
+test treqOptions-22.4.1 { Test -verify_host option, correct value, true } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -verify_host 1]
+    $r easy_opts CURLOPT_SSL_VERIFYHOST
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 2
+
+test treqOptions-22.4.2 { Test -verify_host option, correct value, false } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -verify_host false]
+    $r easy_opts CURLOPT_SSL_VERIFYHOST
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {0}
+
+test treqOptions-23.1 { Test -verify_peer option, missing value } -body {
+    set r [::trequests::get http://localhost -verify_peer]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-verify_peer" option requires an additional argument}
+
+test treqOptions-23.2 { Test -verify_peer option, empty value } -body {
+    set r [::trequests::get http://localhost -verify_peer ""]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-verify_peer option is expected to be a boolean, but got: ''}
+
+test treqOptions-23.3 { Test -verify_peer option, bad value } -body {
+    set r [::trequests::get http://localhost -verify_peer "x"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-verify_peer option is expected to be a boolean, but got: 'x'}
+
+test treqOptions-23.4.1 { Test -verify_peer option, correct value, true } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -verify_peer yes]
+    $r easy_opts CURLOPT_SSL_VERIFYPEER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 1
+
+test treqOptions-23.4.2 { Test -verify_peer option, correct value, false } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -verify_peer 0]
+    $r easy_opts CURLOPT_SSL_VERIFYPEER
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {0}
+
+test treqOptions-24.1 { Test -verify_status option, missing value } -body {
+    set r [::trequests::get http://localhost -verify_status]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-verify_status" option requires an additional argument}
+
+test treqOptions-24.2 { Test -verify_status option, empty value } -body {
+    set r [::trequests::get http://localhost -verify_status ""]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-verify_status option is expected to be a boolean, but got: ''}
+
+test treqOptions-24.3 { Test -verify_status option, bad value } -body {
+    set r [::trequests::get http://localhost -verify_status "x"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-verify_status option is expected to be a boolean, but got: 'x'}
+
+test treqOptions-24.4.1 { Test -verify_status option, correct value, true } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -verify_status true]
+    $r easy_opts CURLOPT_SSL_VERIFYSTATUS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 1
+
+test treqOptions-24.4.2 { Test -verify_status option, correct value, false } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -verify_status no]
+    $r easy_opts CURLOPT_SSL_VERIFYSTATUS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {0}
+
+test treqOptions-25.1 { Test -verify option, missing value } -body {
+    set r [::trequests::get http://localhost -verify]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-verify" option requires an additional argument}
+
+test treqOptions-25.2 { Test -verify option, empty value } -body {
+    set r [::trequests::get http://localhost -verify ""]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-verify option is expected to be a boolean, but got: ''}
+
+test treqOptions-25.3 { Test -verify option, bad value } -body {
+    set r [::trequests::get http://localhost -verify "x"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-verify option is expected to be a boolean, but got: 'x'}
+
+test treqOptions-25.4.1 { Test -verify option, correct value, true } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -verify 1]
+    list \
+        [$r easy_opts CURLOPT_SSL_VERIFYHOST] \
+        [$r easy_opts CURLOPT_SSL_VERIFYPEER] \
+        [catch { $r easy_opts CURLOPT_SSL_VERIFYSTATUS }]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {2 1 1}
+
+test treqOptions-25.4.2 { Test -verify option, correct value, false } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -verify false]
+    list \
+        [$r easy_opts CURLOPT_SSL_VERIFYHOST] \
+        [$r easy_opts CURLOPT_SSL_VERIFYPEER] \
+        [catch { $r easy_opts CURLOPT_SSL_VERIFYSTATUS }]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {0 0 1}
+
+test treqOptions-25.5.1 { Test -verify option, correct value, true, -verify_host overrides } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -verify 1 -verify_host false]
+    list \
+        [$r easy_opts CURLOPT_SSL_VERIFYHOST] \
+        [$r easy_opts CURLOPT_SSL_VERIFYPEER] \
+        [catch { $r easy_opts CURLOPT_SSL_VERIFYSTATUS }]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {0 1 1}
+
+test treqOptions-25.5.2 { Test -verify option, correct value, false, -verify_peer overrides } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -verify 0 -verify_peer yes]
+    list \
+        [$r easy_opts CURLOPT_SSL_VERIFYHOST] \
+        [$r easy_opts CURLOPT_SSL_VERIFYPEER] \
+        [catch { $r easy_opts CURLOPT_SSL_VERIFYSTATUS }]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {0 1 1}
+
+test treqOptions-25.6 { Test -verify option, correct value, true + -verify_status } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -verify 1 -verify_status yes]
+    list \
+        [$r easy_opts CURLOPT_SSL_VERIFYHOST] \
+        [$r easy_opts CURLOPT_SSL_VERIFYPEER] \
+        [$r easy_opts CURLOPT_SSL_VERIFYSTATUS]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result {2 1 1}
+
+test treqOptions-26.1 { Test -timeout option, missing value } -body {
+    set r [::trequests::get http://localhost -timeout]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-timeout" option requires an additional argument}
+
+test treqOptions-26.2 { Test -timeout option, empty value } -body {
+    set r [::trequests::get http://localhost -timeout ""]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {expected integer argument for "-timeout" but got ""}
+
+test treqOptions-26.3 { Test -timeout option, bad value } -body {
+    set r [::trequests::get http://localhost -timeout "x"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {expected integer argument for "-timeout" but got "x"}
+
+test treqOptions-26.4 { Test -timeout option, negative value } -body {
+    set r [::trequests::get http://localhost -timeout -100]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-timeout option is expected as unsigned integer value, but got -100}
+
+test treqOptions-26.5 { Test -timeout option, -1 value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -timeout -1]
+    catch { $r easy_opts CURLOPT_TIMEOUT_MS }
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 1
+
+test treqOptions-26.6 { Test -timeout option, correct value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -timeout 123]
+    $r easy_opts CURLOPT_TIMEOUT_MS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 123
+
+test treqOptions-27.1 { Test -timeout_connect option, missing value } -body {
+    set r [::trequests::get http://localhost -timeout_connect]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-timeout_connect" option requires an additional argument}
+
+test treqOptions-27.2 { Test -timeout_connect option, empty value } -body {
+    set r [::trequests::get http://localhost -timeout_connect ""]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {expected integer argument for "-timeout_connect" but got ""}
+
+test treqOptions-27.3 { Test -timeout_connect option, bad value } -body {
+    set r [::trequests::get http://localhost -timeout_connect "x"]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {expected integer argument for "-timeout_connect" but got "x"}
+
+test treqOptions-27.4 { Test -timeout_connect option, negative value } -body {
+    set r [::trequests::get http://localhost -timeout_connect -100]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {-timeout_connect option is expected as unsigned integer value, but got -100}
+
+test treqOptions-27.5 { Test -timeout_connect option, -1 value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -timeout_connect -1]
+    catch { $r easy_opts CURLOPT_CONNECTTIMEOUT_MS }
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 1
+
+test treqOptions-27.6 { Test -timeout_connect option, correct value } -constraints testingModeEnabled -body {
+    set r [::trequests::get http://localhost -async -timeout_connect 123]
+    $r easy_opts CURLOPT_CONNECTTIMEOUT_MS
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -result 123

@@ -1,0 +1,76 @@
+name: Memory leak checker
+on: [push]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+
+      - name: Setup Environment
+        run: |
+          sudo apt-get install cmake libcurl4-openssl-dev
+
+      - name: Checkout Tcl
+        uses: actions/checkout@v4
+        with:
+          repository: tcltk/tcl
+          ref: core-8-6-15
+          path: tcl
+      - name: Configure Tcl
+        working-directory: tcl/unix
+        run: |
+          ./configure --enable-symbols=all --prefix=$HOME/root || {
+            cat config.log
+            echo "::error::Failure during Configure Tcl"
+            exit 1
+          }
+      - name: Build Tcl
+        working-directory: tcl/unix
+        run: |
+          make -j || {
+            echo "::error::Failure during Build Tcl"
+            exit 1
+          }
+      - name: Install Tcl
+        working-directory: tcl/unix
+        run: |
+          make install || {
+            echo "::error::Failure during Install Tcl"
+            exit 1
+          }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Configure
+        run: |
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/root -DCMAKE_PREFIX_PATH=$HOME/root -DTCL_INCLUDE_DIR=$HOME/root/include -DTCL_LIBRARY_DIR=$HOME/root/lib -DTREQUESTS_TESTING_MODE=ON -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        working-directory: build
+        run: |
+          make -j || {
+            echo "::error::Failure during Build"
+            exit 1
+          }
+      - name: Run Tests
+        working-directory: build
+        run: |
+          LD_LIBRARY_PATH="$HOME/root/lib" MEMDEBUG=1 make test || {
+            echo "::error::Failure during Test"
+            exit 1
+          }
+      - name: Test-Drive Installation
+        working-directory: build
+        run: |
+          make install || {
+            echo "::error::Failure during Install"
+            exit 1
+          }
