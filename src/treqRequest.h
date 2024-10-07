@@ -34,6 +34,7 @@ struct treq_RequestType {
     Tcl_Interp *interp;
     Tcl_Command cmd_token;
     Tcl_Obj *cmd_name;
+    Tcl_Obj *trace_var;
     treq_PoolType *pool;
 
     CURL *curl_easy;

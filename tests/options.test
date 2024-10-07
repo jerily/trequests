@@ -25,7 +25,6 @@ define_constants {
 
 }
 
-
 test treqOptions-1.1 { Test simple async create action without running } -body {
     set r [::trequests::get http://localhost -async]
 } -cleanup {
@@ -1768,3 +1767,11 @@ test treqOptions-27.6 { Test -timeout_connect option, correct value } -constrain
     catch { $r destroy }
     unset -nocomplain r
 } -result 123
+
+test treqOptions-28.1 { Test -varaible option, missing value } -body {
+    set r [::trequests::get http://localhost -variable]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r
+} -returnCodes error -result {"-variable" option requires an additional argument}
+

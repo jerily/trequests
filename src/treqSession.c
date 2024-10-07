@@ -95,6 +95,7 @@ void treq_SessionFree(treq_SessionType *ses) {
         curl_share_cleanup(ses->curl_share);
     }
 
+    Tcl_FreeObject(ses->cmd_name);
     Tcl_FreeObject(ses->headers);
     Tcl_FreeObject(ses->callback);
     Tcl_FreeObject(ses->callback_debug);
