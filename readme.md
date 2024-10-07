@@ -15,14 +15,14 @@ Supported systems:
 
 ### Install Dependencies
 
-Make sure that the build environment has [cURL development packages](https://curl.se/download.html) or build cURL from [sources](https://github.com/curl/curl). For example, on Ubuntu Linux, the development package can be installed using the following commands:
+Make sure that the build environment has [cURL development packages](https://curl.se/download.html). For example, on Ubuntu Linux, the development package can be installed using the following commands:
 
 ```bash
 sudo apt update
 sudo apt install -y libcurl4-openssl-dev
 ```
 
-or install cURL with dependencies using sources:
+or build [cURL](https://github.com/curl/curl) with dependencies using sources:
 
 #### Install OpenSSL
 
