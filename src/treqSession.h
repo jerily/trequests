@@ -13,6 +13,8 @@ typedef struct treq_SessionRequestsListType treq_SessionRequestsListType;
 struct treq_SessionType {
     Tcl_Interp *interp;
     Tcl_Command cmd_token;
+    Tcl_Obj *cmd_name;
+    Tcl_Obj *trace_var;
 
     CURLSH *curl_share;
 

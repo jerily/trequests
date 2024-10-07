@@ -95,6 +95,10 @@ All these commands are synchronous by default. They make an HTTP/HTTPS request u
 * **-data_fields_urlencode data** - takes an even list of elements, which are treated as key-value pairs. Each key and value will be urlencoded and concatenated with an equals symbol (`=`). All key-value pairs will be concatenated with an ampersand character (`&`). Can be specified multiple times.
 * **-json data** - accepts a string that will be used as POST data as is and also it sets `Accepts:` and `Content-Type:` HTTP headers to JSON format. This is a shortcut to a set of options: `-data <data> -accept json -content_type json`. The difference with the **-data** option is that this option can only be specified once.
 
+#### Other parameters
+
+* **-variable variable_name** - the variable whose value will be set to the returned handle. This variable will be bound to handle and if it is deleted, handle will be automatically deleted.
+
 #### Debugging parameters
 
 * **-verbose boolean** - enables or disables verbose debug messages during a request. If enabled and **-callback_debug** options is not specified, debug messages will be printed to stdout. (default is: `false`)
@@ -155,8 +159,11 @@ The following options are accepted by **::trequests::session**:
 * **-verbose boolean**
 * **-callback_debug command**
 * **-callback command**
+* **-variable variable_name**
 
 All these parameters mean the default settings that will be applied to requests created within this session.
+
+The variable name specified by the **-variable** option is the variable whose value will be set to the returned session handle. This variable will be bound to the session handle and if it is deleted, the session will be automatically deleted.
 
 A new requests within a session can be created using a session handle returned by the **::trequests::session** command:
 

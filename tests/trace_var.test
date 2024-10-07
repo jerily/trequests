@@ -1,0 +1,120 @@
+# Copyright Jerily LTD. All Rights Reserved.
+# SPDX-FileCopyrightText: 2024 Neofytos Dimitriou (neo@jerily.cy)
+# SPDX-License-Identifier: MIT.
+
+package require tcltest
+namespace import -force ::tcltest::test
+
+package require trequests
+
+source [file join [file dirname [info script]] common.tcl]
+
+test treqTraceVar-1.1 { Test request creation with variable } -body {
+    set r [::trequests::get https://google.com -async -variable v]
+    string equal $r $v
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r v
+} -result {1}
+
+test treqTraceVar-1.2 { Test request variable readonly } -body {
+    set r [::trequests::get https://google.com -async -variable v]
+    set v foo
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r v
+} -returnCodes error -result {can't set "v": readonly variable}
+
+test treqTraceVar-1.3 { Test request variable, instance destroy by variable } -body {
+    set result [list]
+    set r [::trequests::get https://google.com -async -variable v]
+    lappend result [llength [info commands $r]]
+    unset v
+    lappend result [llength [info commands $r]]
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r v result
+} -result {1 0}
+
+test treqTraceVar-1.4 { Test request variable, instance destroy by variable in local scope } -body {
+    proc treqTraceVar14 {} {
+        return [::trequests::get https://google.com -async -variable v]
+    }
+    list [set r [treqTraceVar14]] [llength [info commands $r]]
+} -cleanup {
+    catch { $r destroy }
+    rename treqTraceVar14 {}
+    unset -nocomplain r
+} -match glob -result {::trequests::request::handler* 0}
+
+test treqTraceVar-1.5 { Test request variable, instance destroy, variable writable } -body {
+    set r [::trequests::get https://google.com -async -variable v]
+    $r destroy
+    set v foo
+} -cleanup {
+    catch { $r destroy }
+    unset -nocomplain r v
+} -result {foo}
+
+test treqTraceVar-2.1 { Test session creation with variable } -body {
+    set s [::trequests::session -variable v]
+    string equal $s $v
+} -cleanup {
+    catch { $s destroy }
+    unset -nocomplain s v
+} -result {1}
+
+test treqTraceVar-2.2 { Test session variable readonly } -body {
+    set s [::trequests::session -variable v]
+    set v foo
+} -cleanup {
+    catch { $s destroy }
+    unset -nocomplain s v
+} -returnCodes error -result {can't set "v": readonly variable}
+
+test treqTraceVar-2.3 { Test session variable, instance destroy by variable } -body {
+    set result [list]
+    set s [::trequests::session -variable v]
+    lappend result [llength [info commands $s]]
+    unset v
+    lappend result [llength [info commands $s]]
+} -cleanup {
+    catch { $s destroy }
+    unset -nocomplain s v result
+} -result {1 0}
+
+test treqTraceVar-2.4 { Test session variable, instance destroy by variable in local scope } -body {
+    proc treqTraceVar24 {} {
+        return [::trequests::session -variable v]
+    }
+    list [set s [treqTraceVar24]] [llength [info commands $s]]
+} -cleanup {
+    catch { $s destroy }
+    rename treqTraceVar24 {}
+    unset -nocomplain s
+} -match glob -result {::trequests::session::handler* 0}
+
+test treqTraceVar-2.5 { Test session variable, instance destroy, variable writable } -body {
+    set s [::trequests::session -variable v]
+    $s destroy
+    set v foo
+} -cleanup {
+    catch { $s destroy }
+    unset -nocomplain s v
+} -result {foo}
+
+test treqTraceVar-3.1 { Test session variable, request instance destroy when session freed by variable } -body {
+    set result [list]
+    set s [::trequests::session -variable v1]
+    lappend result [llength [info commands $s]]
+    set r [$s get https://google.com -async -variable v2]
+    lappend result [llength [info commands $r]]
+    unset v1
+    lappend result [llength [info commands $s]]
+    lappend result [llength [info commands $r]]
+} -cleanup {
+    catch { $r destroy }
+    catch { $s destroy }
+    unset -nocomplain s r v1 v2 result
+} -result {1 1 0 0}
+

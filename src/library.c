@@ -92,6 +92,7 @@ typedef struct treq_RequestOptions {
     treq_optionBooleanType verify_host;
     treq_optionBooleanType verify_peer;
     treq_optionBooleanType verify_status;
+    treq_optionObjectType variable;
     int async;
     int simple;
     int timeout;
@@ -122,6 +123,7 @@ typedef struct treq_RequestOptions {
     .verify_host =            { "-verify_host",           -1, NULL, -1 }, \
     .verify_peer =            { "-verify_peer",           -1, NULL, -1 }, \
     .verify_status =          { "-verify_status",         -1, NULL, -1 }, \
+    .variable =               { "-variable",              -1, NULL }, \
     .async = 0, \
     .simple = 0, \
     .timeout = -1, \
@@ -680,7 +682,8 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType metho
         treq_ValidateOptionBoolean(interp, &opt->verify_peer) != TCL_OK                                 ||
         treq_ValidateOptionBoolean(interp, &opt->verify_status) != TCL_OK                               ||
         treq_ValidateOptionBoolean(interp, &opt->verbose) != TCL_OK                                     ||
-        treq_ValidateOptionBoolean(interp, &opt->allow_redirects) != TCL_OK)
+        treq_ValidateOptionBoolean(interp, &opt->allow_redirects) != TCL_OK                             ||
+        treq_ValidateOptionCommon(interp, (treq_optionCommonType *)&opt->variable) == TCL_ERROR)
     {
         return TCL_ERROR;
     }
@@ -823,6 +826,10 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType metho
         return TCL_ERROR;
     }
 
+    if (isOptionExists(opt->variable)) {
+        DBG2(printf("option %s: %s", opt->variable.name, Tcl_GetString(opt->variable.value)));
+    }
+
     DBG2(printf("option %s: %s", "-simple", (opt->simple ? "true" : "false")));
     DBG2(printf("option %s: %s", "-async", (opt->async ? "true" : "false")));
     DBG2(printf("option %s: %d", "-timeout", opt->timeout));
@@ -957,8 +964,40 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
 
 }
 
+static char *treq_RequestVarTrace(ClientData clientData, Tcl_Interp *interp,
+    const char *name1, const char *name2, int flags)
+{
+    treq_RequestType *request = (treq_RequestType *)clientData;
+
+    if (flags & TCL_TRACE_WRITES) {
+        DBG2(printf("return: error (write attempt on var [%s])", name1));
+        // Restore value
+        Tcl_SetVar2(interp, name1, name2, Tcl_GetString(request->cmd_name), 0);
+        return "readonly variable";
+    }
+
+    if (flags & TCL_TRACE_UNSETS) {
+        DBG2(printf("unset var for handler: %p", (void *)h));
+        Tcl_DeleteCommandFromToken(request->interp, request->cmd_token);
+    }
+
+    return NULL;
+
+}
+
 static void treq_RequestHandleDelete(ClientData clientData) {
     treq_RequestType *request = (treq_RequestType *)clientData;
+
+    if (request->trace_var != NULL) {
+        DBG2(printf("untrace var: %s", Tcl_GetString(h->trace_var)));
+        Tcl_UntraceVar(request->interp, Tcl_GetString(request->trace_var),
+            TCL_TRACE_WRITES | TCL_TRACE_UNSETS, treq_RequestVarTrace, clientData);
+        Tcl_DecrRefCount(request->trace_var);
+        request->trace_var = NULL;
+    } else {
+        DBG2(printf("trace var is not found"));
+    }
+
     if (request->isDead) {
         DBG2(printf("already dead"));
         return;
@@ -1018,7 +1057,8 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
         { TCL_ARGV_FUNC, "-verify",                boolean_arg, &opt.verify,                NULL, NULL },
         { TCL_ARGV_FUNC, "-verify_host",           boolean_arg, &opt.verify_host,           NULL, NULL },
         { TCL_ARGV_FUNC, "-verify_peer",           boolean_arg, &opt.verify_peer,           NULL, NULL },
-        { TCL_ARGV_FUNC, "-verify_status",         boolean_arg, &opt.verify_status,           NULL, NULL },
+        { TCL_ARGV_FUNC, "-verify_status",         boolean_arg, &opt.verify_status,         NULL, NULL },
+        { TCL_ARGV_FUNC, "-variable",              object_arg,  &opt.variable,              NULL, NULL },
         TCL_ARGV_TABLE_END
     };
 #pragma GCC diagnostic pop
@@ -1198,6 +1238,15 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
     request->cmd_name = Tcl_GetObjResult(interp);
     Tcl_IncrRefCount(request->cmd_name);
 
+    if (isOptionExists(opt.variable)) {
+        request->trace_var = opt.variable.value;
+        Tcl_IncrRefCount(request->trace_var);
+        DBG2(printf("bind variable: %s", Tcl_GetString(request->trace_var)));
+        Tcl_ObjSetVar2(interp, request->trace_var, NULL, request->cmd_name, 0);
+        Tcl_TraceVar(interp, Tcl_GetString(request->trace_var), TCL_TRACE_WRITES | TCL_TRACE_UNSETS,
+            treq_RequestVarTrace, (ClientData)request);
+    }
+
     goto done;
 
 error:
@@ -1336,9 +1385,41 @@ wrongNumArgs:
 
 }
 
+static char *treq_SessionVarTrace(ClientData clientData, Tcl_Interp *interp,
+    const char *name1, const char *name2, int flags)
+{
+    treq_SessionType *session = (treq_SessionType *)clientData;
+
+    if (flags & TCL_TRACE_WRITES) {
+        DBG2(printf("return: error (write attempt on var [%s])", name1));
+        // Restore value
+        Tcl_SetVar2(interp, name1, name2, Tcl_GetString(session->cmd_name), 0);
+        return "readonly variable";
+    }
+
+    if (flags & TCL_TRACE_UNSETS) {
+        DBG2(printf("unset var for handler: %p", (void *)h));
+        Tcl_DeleteCommandFromToken(session->interp, session->cmd_token);
+    }
+
+    return NULL;
+
+}
+
 static void treq_SessionHandleDelete(ClientData clientData) {
     treq_SessionType *session = (treq_SessionType *)clientData;
     DBG2(printf("enter..."));
+
+    if (session->trace_var != NULL) {
+        DBG2(printf("untrace var: %s", Tcl_GetString(session->trace_var)));
+        Tcl_UntraceVar(session->interp, Tcl_GetString(session->trace_var),
+            TCL_TRACE_WRITES | TCL_TRACE_UNSETS, treq_SessionVarTrace, clientData);
+        Tcl_DecrRefCount(session->trace_var);
+        session->trace_var = NULL;
+    } else {
+        DBG2(printf("trace var is not found"));
+    }
+
     treq_SessionFree(session);
     DBG2(printf("return: ok"));
 }
@@ -1375,6 +1456,7 @@ static int treq_SessionCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
         { TCL_ARGV_FUNC, "-verify_host",     boolean_arg, &opt.verify_host,     NULL, NULL },
         { TCL_ARGV_FUNC, "-verify_peer",     boolean_arg, &opt.verify_peer,     NULL, NULL },
         { TCL_ARGV_FUNC, "-verify_status",   boolean_arg, &opt.verify_status,   NULL, NULL },
+        { TCL_ARGV_FUNC, "-variable",        object_arg,  &opt.variable,        NULL, NULL },
         TCL_ARGV_TABLE_END
     };
 #pragma GCC diagnostic pop
@@ -1443,6 +1525,18 @@ static int treq_SessionCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
     session->interp = interp;
     session->cmd_token = treq_CreateObjCommand(interp, "::trequests::session::handler%p",
         treq_SessionHandleCmd, (ClientData)session, treq_SessionHandleDelete);
+
+    session->cmd_name = Tcl_GetObjResult(interp);
+    Tcl_IncrRefCount(session->cmd_name);
+
+    if (isOptionExists(opt.variable)) {
+        session->trace_var = opt.variable.value;
+        Tcl_IncrRefCount(session->trace_var);
+        DBG2(printf("bind variable: %s", Tcl_GetString(session->trace_var)));
+        Tcl_ObjSetVar2(interp, session->trace_var, NULL, session->cmd_name, 0);
+        Tcl_TraceVar(interp, Tcl_GetString(session->trace_var), TCL_TRACE_WRITES | TCL_TRACE_UNSETS,
+            treq_SessionVarTrace, (ClientData)session);
+    }
 
     DBG2(printf("return: ok (%s)", Tcl_GetStringResult(interp)));
     goto done;
