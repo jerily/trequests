@@ -22,6 +22,28 @@ sudo apt update
 sudo apt install -y libcurl4-openssl-dev
 ```
 
+or install cURL with dependencies using sources:
+
+#### Install OpenSSL
+
+```bash
+curl -sL https://github.com/openssl/openssl/releases/download/openssl-3.3.2/openssl-3.3.2.tar.gz | tar zx
+cd openssl-*
+./Configure
+make
+make install
+```
+
+#### Install cURL
+
+```bash
+curl -sL https://github.com/curl/curl/releases/download/curl-8_9_1/curl-8.9.1.tar.gz | tar zx
+cd curl-*
+./configure --with-openssl
+make
+make install
+```
+
 ### Install trequests
 
 ```bash
