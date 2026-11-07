@@ -63,7 +63,7 @@ jobs:
       - name: Run Tests
         working-directory: build
         run: |
-          LD_LIBRARY_PATH="$HOME/root/lib" MEMDEBUG=1 make test || {
+          LD_LIBRARY_PATH="$HOME/root/lib" MEMDEBUG=1 ctest --output-on-failure || {
             echo "::error::Failure during Test"
             exit 1
           }
