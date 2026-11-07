@@ -253,7 +253,7 @@ void treq_RequestSetError(treq_RequestType *req, Tcl_Obj *error) {
 
 Tcl_Obj *treq_RequestGetState(treq_RequestType *req) {
 
-    const char *state;
+    const char *state = "unknown";
 
     switch (req->state) {
     case TREQ_REQUEST_CREATED:
@@ -305,7 +305,7 @@ static void treq_debug_dump(const char *text, FILE *stream, unsigned char *ptr, 
 }
 
 static int treq_debug_callback(CURL *handle, curl_infotype type, char *data, size_t size, void *clientp) {
-    const char *text;
+    const char *text = "unknown";
     UNUSED(handle);
     treq_RequestType *req = (treq_RequestType *)clientp;
 
@@ -561,8 +561,10 @@ void treq_RequestRun(treq_RequestType *req) {
     } else if (req->postfields != NULL) {
 
         Tcl_Size postfields_len;
-        const char *postfields_str = Tcl_GetStringFromObj(req->postfields, &postfields_len);
-        DBG2(printf("postfields: [%s]", postfields_str));
+        const char *postfields_str = req->postfields_binary
+            ? (const char *)Tcl_GetByteArrayFromObj(req->postfields, &postfields_len)
+            : Tcl_GetStringFromObj(req->postfields, &postfields_len);
+        DBG2(printf("postfields length: %lld", (long long)postfields_len));
         safe_curl_easy_setopt(CURLOPT_POSTFIELDSIZE, (long)postfields_len);
         safe_curl_easy_setopt(CURLOPT_POSTFIELDS, postfields_str);
 
@@ -636,6 +638,10 @@ void treq_RequestRun(treq_RequestType *req) {
         safe_curl_easy_setopt(CURLOPT_TIMEOUT_MS, req->timeout);
     } else {
         DBG2(printf("set timeout: <default>"));
+    }
+
+    if (req->cafile != NULL) {
+        safe_curl_easy_setopt(CURLOPT_CAINFO, Tcl_GetString(req->cafile));
     }
 
     if (req->verify_host != -1) {
@@ -789,6 +795,7 @@ void treq_RequestFree(treq_RequestType *req) {
     Tcl_FreeObject(req->header_accept);
     Tcl_FreeObject(req->header_content_type);
     Tcl_FreeObject(req->postfields);
+    Tcl_FreeObject(req->cafile);
     Tcl_FreeObject(req->querystring);
 #ifdef TREQUESTS_TESTING_MODE
     Tcl_FreeObject(req->set_options);

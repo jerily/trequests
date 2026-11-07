@@ -4,7 +4,9 @@ TCL/C extension that provides an interface to the [libcurl](https://curl.se/libc
 
 ## Requirements
 
-- [libcurl](https://curl.se/libcurl/)
+- Tcl 8.6 or 9.x headers and stub library (tested with 8.6 and 9.1).
+- [libcurl](https://curl.se/libcurl/) 7.87 or newer with a TLS backend for HTTPS.
+- A C11 compiler and CMake 3.22.1 or newer.
 
 Supported systems:
 
@@ -27,15 +29,54 @@ sudo apt install -y libcurl4-openssl-dev
 ```bash
 git clone https://github.com/jerily/trequests.git
 cd trequests
-mkdir build
-cd build
-cmake ..
-# or if TCL is not in the default path (/usr/local/lib):
-# change "TCL_LIBRARY_DIR" and "TCL_INCLUDE_DIR" to the correct paths
-# cmake .. -DTCL_LIBRARY_DIR=/usr/local/lib -DTCL_INCLUDE_DIR=/usr/local/include
-make
-make install
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+cmake --install build
 ```
+
+For a custom Tcl installation, set `CMAKE_PREFIX_PATH`, or explicitly set
+`TCL_INCLUDE_PATH`, `TCL_STUB_LIBRARY` and `TCL_TCLSH` to matching files.
+Shared builds use Tcl stubs and do not link directly to libtcl. Build separately
+for Tcl 8.6 and Tcl 9; stubs do not make their major-version ABIs interchangeable.
+`-DBUILD_SHARED_LIBS=OFF` produces a static archive for embedding: link the host
+with Tcl and libcurl, call `Trequests_Init`, and register it with `Tcl_StaticPackage`.
+
+Run the offline options and loopback HTTP tests with:
+
+```bash
+cmake -S . -B build -DTREQUESTS_TESTING_MODE=ON
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+```
+
+`TREQUESTS_TESTING_MODE` exposes diagnostic commands and is off by default.
+`TREQUESTS_NETWORK_TESTS=ON` also enables the existing external-service tests.
+Use `TCL_MEM_DEBUG=ON` only with a matching memory-debug Tcl build.
+
+## TLS and binary data
+
+Certificate and hostname verification remain enabled by default. Use `-cafile`
+to trust a PEM CA bundle, including a private CA, without disabling verification.
+Sessions inherit this setting; an individual request can override it.
+Transport errors are available through `$response state` and `$response error`;
+HTTP errors still have their HTTP status code.
+
+```tcl
+package require trequests 1.1.0
+set session [::trequests::session -cafile /path/to/ca.pem]
+set response [$session put https://example.com/object \
+    -data_binary [binary format H* 0080ff] -content_type application/octet-stream]
+try {
+    if {[$response state] eq "error"} {error [$response error]}
+    puts [$response status_code]
+} finally {$session destroy}
+```
+
+`-data_binary` sends a Tcl byte array unchanged, including embedded NULs and all
+byte values. `$response content` returns a byte array; use `$response text` for
+decoded text. This option is exclusive with the text, JSON and form body options.
+It works for synchronous and asynchronous requests. When sending textual data
+as bytes, explicitly encode it first, for example `encoding convertto utf-8`.
 
 ## Usage
 
@@ -73,6 +114,7 @@ All these commands are synchronous by default. They make an HTTP/HTTPS request u
 * **-verify_peer boolean** - specifies whether the authenticity of the peer's certificate must be verified (default is: `true`)
 * **-verify boolean** - this is a shortcut for specifying both **-verify_host** and **-verify_peer** options
 * **-verify_status boolean** - specifies whether the status of the server certificate using the "Certificate Status Request" TLS extension must be verified (default is: `false`)
+* **-cafile path** - PEM CA bundle used to verify the peer; defaults to libcurl's configured trust store.
 
 #### Authentication options
 
@@ -88,6 +130,7 @@ All these commands are synchronous by default. They make an HTTP/HTTPS request u
 
 #### POST parameters
 
+* **-data_binary bytes** - sends one byte array without encoding or concatenation; mutually exclusive with other body options.
 * **-form form_data** - a value in key-value (dictionary) format that specifies form POST data. Can be specified multiple times. In this case, the dictionaries will be merged.
 * **-data data** - accepts a string that will be used as POST data as is. Can be specified multiple times. All strings specified by this parameter will be concatenated with an ampersand character (`&`).
 * **-data_urlencode data** - accepts a string that will be urlencoded and used as POST data. Can be specified multiple times. All strings specified by this parameter will be concatenated with an ampersand character (`&`).
@@ -104,7 +147,7 @@ All these commands are synchronous by default. They make an HTTP/HTTPS request u
 
 By default, requests are synchronous. If switch `-async` is specified in request parameter, an asynchronous request will be created.
 
-Asynchronous request at the creation stage only schedule the execution of the request, but does not start any actions. Thus it never returns an error. To run an asynchronous request(s), the Tcl interpreter must enter an event loop, for example, using the `wvait` or `update` commands.
+Asynchronous requests schedule execution after validating their arguments. To run them, enter the Tcl event loop with `vwait` or `update`. Transport errors are reported on the response handle.
 
 When an asynchronous request is completed with either a success or an error and a script is specified using the **-callback** option, then the script will be run. It must accept a single argument, which is the response handle. The exact state of the request and response data can be retrieved using this handle.
 
@@ -148,6 +191,7 @@ The following options are accepted by **::trequests::session**:
 * **-verify_peer boolean**
 * **-verify boolean**
 * **-verify_status boolean**
+* **-cafile path**
 * **-auth username_password**
 * **-auth_token token**
 * **-auth_scheme scheme**

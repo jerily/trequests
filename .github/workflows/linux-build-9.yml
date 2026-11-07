@@ -1,5 +1,5 @@
-name: Linux (with Tcl 9.0)
-on: [push]
+name: Linux (with Tcl 9.1)
+on: [push, pull_request]
 permissions:
   contents: read
 defaults:
@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: tcltk/tcl
-          ref: core-9-0-b3
+          ref: core-9-1-0
           path: tcl
       - name: Configure Tcl
         working-directory: tcl/unix

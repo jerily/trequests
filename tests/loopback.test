@@ -1,0 +1,38 @@
+package require tcltest
+namespace import -force ::tcltest::test
+package require trequests
+source [file join [file dirname [info script]] common.tcl]
+
+set server [open [list | [info nameofexecutable] [file join [file dirname [info script]] fixtures echo-server.tcl]] r+]
+gets $server port
+set url http://127.0.0.1:$port
+set savedNoProxy [array get ::env NO_PROXY]
+set ::env(NO_PROXY) 127.0.0.1,localhost
+try {
+    test binary-1 {All byte values, embedded NULs and empty bodies survive upload and download} -body {
+        set results {}
+        set bytes {}
+        for {set i 0} {$i < 256} {incr i} {lappend bytes $i}
+        foreach data [list [binary format c* $bytes] [binary format H* 0000ff80007f] {}] {
+            foreach method {post put} {
+                set response [::trequests::$method $url -data_binary $data -timeout 2000]
+                try {
+                    lappend results [expr {[$response status_code] == 200 && [$response content] eq $data}]
+                } finally {$response destroy}
+            }
+        }
+        set results
+    } -cleanup {unset -nocomplain results bytes i data method response} -result {1 1 1 1 1 1}
+    test binary-2 {Asynchronous byte-array uploads keep the body alive through completion} -body {
+        set data [binary format H* 0080ff61]
+        set done 0
+        set response [::trequests::post $url -async -data_binary $data -timeout 2000 -callback {apply {{request} {set ::done 1}}}]
+        unset data
+        vwait done
+        try {list [$response status_code] [binary encode hex [$response content]]} finally {$response destroy}
+    } -cleanup {unset -nocomplain data done response} -result {200 0080ff61}
+} finally {
+    close $server
+    unset -nocomplain ::env(NO_PROXY)
+    array set ::env $savedNoProxy
+}

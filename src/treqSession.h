@@ -24,6 +24,7 @@ struct treq_SessionType {
     Tcl_Obj *callback_debug;
     Tcl_Obj *accept;
     Tcl_Obj *content_type;
+    Tcl_Obj *cafile;
     int timeout;
     int timeout_connect;
     int verify;

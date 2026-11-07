@@ -62,7 +62,9 @@ struct treq_RequestType {
 
     treq_RequestAuthType *auth;
 
+    Tcl_Obj *cafile;
     Tcl_Obj *postfields;
+    int postfields_binary;
     Tcl_Obj *querystring;
 
     int allow_redirects;
