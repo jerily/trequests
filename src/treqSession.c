@@ -100,6 +100,7 @@ void treq_SessionFree(treq_SessionType *ses) {
     Tcl_FreeObject(ses->callback_debug);
     Tcl_FreeObject(ses->accept);
     Tcl_FreeObject(ses->content_type);
+    Tcl_FreeObject(ses->cafile);
 
     if (ses->auth != NULL) {
         treq_RequestAuthFree(ses->auth);

@@ -81,6 +81,8 @@ typedef struct treq_RequestOptions {
     treq_optionAuthAwsSigv4Type auth_aws_sigv4;
     treq_optionObjectType accept;
     treq_optionObjectType content_type;
+    treq_optionObjectType cafile;
+    treq_optionObjectType data_binary;
     treq_optionDataType data;
     treq_optionDataType data_urlencode;
     treq_optionDataType data_fields;
@@ -111,6 +113,8 @@ typedef struct treq_RequestOptions {
     .auth =                   { "-auth",                  -1, NULL, NULL, NULL }, \
     .accept =                 { "-accept",                -1, NULL }, \
     .content_type =           { "-content_type",          -1, NULL }, \
+    .cafile =                 { "-cafile",                -1, NULL }, \
+    .data_binary =            { "-data_binary",           -1, NULL }, \
     .data =                   { "-data",                  -1, NULL, 0, 0, 0, 0 }, \
     .data_urlencode =         { "-data_urlencode",        -1, NULL, 0, 1, 0, 0 }, \
     .data_fields =            { "-data_fields",           -1, NULL, 0, 0, 1, 0 }, \
@@ -668,6 +672,8 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType metho
         treq_ValidateOptionObjectList(interp, (treq_optionObjectType *)&opt->auth_aws_sigv4, 0) != TCL_OK  ||
         treq_ValidateOptionCommon(interp, (treq_optionCommonType *)&opt->accept) == TCL_ERROR           ||
         treq_ValidateOptionCommon(interp, (treq_optionCommonType *)&opt->content_type) == TCL_ERROR     ||
+        treq_ValidateOptionCommon(interp, (treq_optionCommonType *)&opt->cafile) == TCL_ERROR ||
+        treq_ValidateOptionCommon(interp, (treq_optionCommonType *)&opt->data_binary) == TCL_ERROR ||
         treq_ValidateOptionData(interp, &opt->data) != TCL_OK                                           ||
         treq_ValidateOptionData(interp, &opt->data_urlencode) != TCL_OK                                 ||
         treq_ValidateOptionData(interp, &opt->data_fields) != TCL_OK                                    ||
@@ -699,6 +705,7 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType metho
     // options.
 
     opt_defined1 =
+        isOptionExists(opt->data_binary) ? (void *)&opt->data_binary :
         isOptionExists(opt->data)                  ? (void *)&opt->data                  :
         isOptionExists(opt->data_urlencode)        ? (void *)&opt->data_urlencode        :
         isOptionExists(opt->data_fields)           ? (void *)&opt->data_fields           :
@@ -735,6 +742,7 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType metho
         }
 
         opt_defined2 =
+            (opt_defined1 != (void *)&opt->data_binary && isOptionExists(opt->data_binary)) ? (void *)&opt->data_binary :
             (opt_defined1 != (void *)&opt->data                  && isOptionExists(opt->data))                  ? (void *)&opt->data                  :
             (opt_defined1 != (void *)&opt->data_urlencode        && isOptionExists(opt->data_urlencode))        ? (void *)&opt->data_urlencode        :
             (opt_defined1 != (void *)&opt->data_fields           && isOptionExists(opt->data_fields))           ? (void *)&opt->data_fields           :
@@ -1005,7 +1013,9 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
         { TCL_ARGV_FUNC, "-auth_scheme",           object_arg,  &opt.auth_scheme,           NULL, NULL },
         { TCL_ARGV_FUNC, "-auth_aws_sigv4",        object_arg,  &opt.auth_aws_sigv4,        NULL, NULL },
         { TCL_ARGV_FUNC, "-accept",                object_arg,  &opt.accept,                NULL, NULL },
+        { TCL_ARGV_FUNC, "-cafile", object_arg, &opt.cafile, NULL, NULL },
         { TCL_ARGV_FUNC, "-content_type",          object_arg,  &opt.content_type,          NULL, NULL },
+        { TCL_ARGV_FUNC, "-data_binary",           object_arg, &opt.data_binary, NULL, NULL },
         { TCL_ARGV_FUNC, "-data",                  lappend_arg, &opt.data,                  NULL, NULL },
         { TCL_ARGV_FUNC, "-data_urlencode",        lappend_arg, &opt.data_urlencode,        NULL, NULL },
         { TCL_ARGV_FUNC, "-data_fields",           lappend_arg, &opt.data_fields,           NULL, NULL },
@@ -1099,7 +1109,10 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
         Tcl_BounceRefCount(content_type);
     }
 
+    SetRequestProperty(request->cafile, isOptionExists(opt.cafile) ? opt.cafile.value : GetSessionProperty(cafile, NULL));
+    request->postfields_binary = isOptionExists(opt.data_binary);
     request->postfields =
+        isOptionExists(opt.data_binary)           ? opt.data_binary.value           :
         isOptionExists(opt.data)                  ? opt.data.value                  :
         isOptionExists(opt.data_urlencode)        ? opt.data_urlencode.value        :
         isOptionExists(opt.data_fields)           ? opt.data_fields.value           :
@@ -1368,6 +1381,7 @@ static int treq_SessionCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
         { TCL_ARGV_FUNC, "-auth_scheme",     object_arg,  &opt.auth_scheme,     NULL, NULL },
         { TCL_ARGV_FUNC, "-auth_aws_sigv4",  object_arg,  &opt.auth_aws_sigv4,  NULL, NULL },
         { TCL_ARGV_FUNC, "-accept",          object_arg,  &opt.accept,          NULL, NULL },
+        { TCL_ARGV_FUNC, "-cafile", object_arg, &opt.cafile, NULL, NULL },
         { TCL_ARGV_FUNC, "-content_type",    object_arg,  &opt.content_type,    NULL, NULL },
         { TCL_ARGV_INT,  "-timeout",         NULL,        &opt.timeout,         NULL, NULL },
         { TCL_ARGV_INT,  "-timeout_connect", NULL,        &opt.timeout_connect, NULL, NULL },
@@ -1428,6 +1442,11 @@ static int treq_SessionCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
     if (isOptionExists(opt.content_type)) {
         session->content_type = opt.content_type.value;
         Tcl_IncrRefCount(session->content_type);
+    }
+
+    if (isOptionExists(opt.cafile)) {
+        session->cafile = opt.cafile.value;
+        Tcl_IncrRefCount(session->cafile);
     }
 
     session->verify = isOptionExists(opt.verify) ? opt.verify.value : -1;
@@ -1595,12 +1614,11 @@ static Tcl_ExitProc treq_PackageThreadExitProc;
 
 int Trequests_Init(Tcl_Interp *interp) {
 
-    DBG2(printf("initialization; tid: %p", (void *)Tcl_GetCurrentThread()));
-
     if (Tcl_InitStubs(interp, MIN_VERSION, 0) == NULL) {
-        SetResult("Unable to initialize Tcl stubs");
         return TCL_ERROR;
     }
+
+    DBG2(printf("initialization; tid: %p", (void *)Tcl_GetCurrentThread()));
 
     Tcl_MutexLock(&glob.init_mx);
     if (!glob.is_initialized) {

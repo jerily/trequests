@@ -38,6 +38,7 @@ static const struct {
     { "CURLOPT_HTTPHEADER",        TREQ_OPT_SLIST   },
     { "CURLOPT_CONNECTTIMEOUT_MS", TREQ_OPT_LONG    },
     { "CURLOPT_TIMEOUT_MS",        TREQ_OPT_LONG    },
+    { "CURLOPT_CAINFO",            TREQ_OPT_STRING  },
     { "CURLOPT_SSL_VERIFYHOST",    TREQ_OPT_LONG    },
     { "CURLOPT_SSL_VERIFYPEER",    TREQ_OPT_LONG    },
     { "CURLOPT_SSL_VERIFYSTATUS",  TREQ_OPT_LONG    },
@@ -80,7 +81,7 @@ void treq_RequestRegisterEasyOption(treq_RequestType *req, const char *opt_name,
         Tcl_IncrRefCount(req->set_options);
     }
 
-    Tcl_Obj *val;
+    Tcl_Obj *val = NULL;
 
     va_list arg;
     va_start(arg, opt_name);
@@ -104,6 +105,7 @@ void treq_RequestRegisterEasyOption(treq_RequestType *req, const char *opt_name,
     }
     va_end(arg);
 
+    if (val == NULL) {val = Tcl_NewObj();}
     Tcl_DictObjPut(NULL, req->set_options, opt_obj, val);
     Tcl_BounceRefCount(opt_obj);
 

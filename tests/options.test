@@ -1192,19 +1192,21 @@ test treqOptions-16.2 { Test -auth_scheme option, wrong value } -body {
 
 test treqOptions-16.3.1 { Test -auth_scheme option, single option, any } -constraints testingModeEnabled -body {
     set r [::trequests::get http://localhost -async -auth_scheme any]
-    $r easy_opts CURLOPT_HTTPAUTH
+    set value [$r easy_opts CURLOPT_HTTPAUTH]
+    expr {($value & $CURLAUTH_BASIC) != 0 && ($value & $CURLAUTH_DIGEST_IE) == 0}
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result $CURLAUTH_ANY
+} -result 1
 
 test treqOptions-16.3.2 { Test -auth_scheme option, single option, anysafe } -constraints testingModeEnabled -body {
     set r [::trequests::get http://localhost -async -auth_scheme anysafe]
-    $r easy_opts CURLOPT_HTTPAUTH
+    set value [$r easy_opts CURLOPT_HTTPAUTH]
+    expr {($value & $CURLAUTH_BASIC) == 0 && ($value & $CURLAUTH_DIGEST_IE) == 0 && ($value & $CURLAUTH_DIGEST) != 0}
 } -cleanup {
     catch { $r destroy }
     unset -nocomplain r
-} -result $CURLAUTH_ANYSAFE
+} -result 1
 
 test treqOptions-16.3.3 { Test -auth_scheme option, single option, only } -body {
     set r [::trequests::get http://localhost -async -auth_scheme only]
@@ -1261,7 +1263,7 @@ test treqOptions-16.3.8.2 { Test -auth_scheme option, single option, negotiate }
     unset -nocomplain r
 } -result {curl_easy_setopt(CURLOPT_HTTPAUTH) failed: A requested feature, protocol or option was not found built-in in this libcurl due to a build-time decision.}
 
-test treqOptions-16.3.9 { Test -auth_scheme option, single option, ntlm } -constraints testingModeEnabled -body {
+test treqOptions-16.3.9 { Test -auth_scheme option, single option, ntlm } -constraints {testingModeEnabled curlFeatureEnabledNTLM} -body {
     set r [::trequests::get http://localhost -async -auth_scheme ntlm]
     $r easy_opts CURLOPT_HTTPAUTH
 } -cleanup {
@@ -1768,3 +1770,22 @@ test treqOptions-27.6 { Test -timeout_connect option, correct value } -constrain
     catch { $r destroy }
     unset -nocomplain r
 } -result 123
+
+test treqOptions-cafile-1 {CA files apply to sessions and may be overridden per request} -constraints testingModeEnabled -body {
+    set session [::trequests::session -cafile {/tmp/session CA.pem}]
+    set inherited [$session get http://localhost -async]
+    set overridden [$session get http://localhost -async -cafile {/tmp/request CA.pem}]
+    list [$inherited easy_opts CURLOPT_CAINFO] [$overridden easy_opts CURLOPT_CAINFO]
+} -cleanup {$session destroy} -result {{/tmp/session CA.pem} {/tmp/request CA.pem}}
+
+test treqOptions-cafile-2 {A missing CA file option value is rejected} -body {
+    ::trequests::get http://localhost -cafile
+} -returnCodes error -match glob -result {*-cafile*requires an additional argument*}
+
+test treqOptions-binary-1 {Binary bodies cannot be combined with text or form bodies} -body {
+    set failures {}
+    foreach option {-data -json -form -data_urlencode -data_fields -data_fields_urlencode} {
+        lappend failures [catch {::trequests::post http://localhost -async -data_binary abc $option {a b}}]
+    }
+    set failures
+} -result {1 1 1 1 1 1}

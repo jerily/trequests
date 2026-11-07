@@ -56,3 +56,5 @@ proc httpbin { code req } {
 }
 
 
+
+tcltest::testConstraint curlFeatureEnabledNTLM [expr {"NTLM" in [trequests::curl_version features]}]
