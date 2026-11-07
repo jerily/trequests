@@ -1196,7 +1196,7 @@ test treqOptions-16.3.1 { Test -auth_scheme option, single option, any } -constr
     expr {($value & $CURLAUTH_BASIC) != 0 && ($value & $CURLAUTH_DIGEST_IE) == 0}
 } -cleanup {
     catch { $r destroy }
-    unset -nocomplain r
+    unset -nocomplain r value
 } -result 1
 
 test treqOptions-16.3.2 { Test -auth_scheme option, single option, anysafe } -constraints testingModeEnabled -body {
@@ -1205,7 +1205,7 @@ test treqOptions-16.3.2 { Test -auth_scheme option, single option, anysafe } -co
     expr {($value & $CURLAUTH_BASIC) == 0 && ($value & $CURLAUTH_DIGEST_IE) == 0 && ($value & $CURLAUTH_DIGEST) != 0}
 } -cleanup {
     catch { $r destroy }
-    unset -nocomplain r
+    unset -nocomplain r value
 } -result 1
 
 test treqOptions-16.3.3 { Test -auth_scheme option, single option, only } -body {
@@ -1776,7 +1776,10 @@ test treqOptions-cafile-1 {CA files apply to sessions and may be overridden per 
     set inherited [$session get http://localhost -async]
     set overridden [$session get http://localhost -async -cafile {/tmp/request CA.pem}]
     list [$inherited easy_opts CURLOPT_CAINFO] [$overridden easy_opts CURLOPT_CAINFO]
-} -cleanup {$session destroy} -result {{/tmp/session CA.pem} {/tmp/request CA.pem}}
+} -cleanup {
+    $session destroy
+    unset session inherited overridden
+} -result {{/tmp/session CA.pem} {/tmp/request CA.pem}}
 
 test treqOptions-cafile-2 {A missing CA file option value is rejected} -body {
     ::trequests::get http://localhost -cafile
@@ -1788,4 +1791,4 @@ test treqOptions-binary-1 {Binary bodies cannot be combined with text or form bo
         lappend failures [catch {::trequests::post http://localhost -async -data_binary abc $option {a b}}]
     }
     set failures
-} -result {1 1 1 1 1 1}
+} -cleanup {unset failures option} -result {1 1 1 1 1 1}
