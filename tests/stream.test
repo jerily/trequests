@@ -28,7 +28,7 @@ try {
             -callback_data streamData -callback streamDone -buffer_response false]
         vwait done
         list $body $released $done [$r content] [$r state]
-    } -cleanup {$r destroy} -result {onetwo 1 1 {} done}
+    } -cleanup {$r destroy; unset -nocomplain r done body bytes released} -result {onetwo 1 1 {} done}
     test stream-2 {Default response buffering and raw byte delivery are preserved} -body {
         set done 0; set body {}
         set bytes [binary format H* 00017f80feff]
@@ -36,21 +36,21 @@ try {
             -callback_data {apply {{bytes request} {append ::body $bytes}}} -callback streamDone]
         vwait done
         list [binary encode hex $body] [binary encode hex [$r content]]
-    } -cleanup {$r destroy} -result {00017f80feff 00017f80feff}
+    } -cleanup {$r destroy; unset -nocomplain r done body bytes released} -result {00017f80feff 00017f80feff}
     test stream-3 {Callback errors stop delivery and reach the completion callback} -body {
         set done 0
         set r [::trequests::post $url -async -data hello -timeout 2000 \
             -callback_data {apply {{bytes request} {error "consumer failed"}}} -callback streamDone]
         vwait done
         list $done [$r state] [$r error]
-    } -cleanup {$r destroy} -result {1 error {consumer failed}}
+    } -cleanup {$r destroy; unset -nocomplain r done body bytes released} -result {1 error {consumer failed}}
     test stream-4 {Cancel before dispatch completes once} -body {
         set done 0
         set r [::trequests::post $url -async -data hello -timeout 2000 -callback streamDone]
         $r cancel
         vwait done
         list $done [$r state] [$r error]
-    } -cleanup {$r destroy} -result {1 error {request cancelled}}
+    } -cleanup {$r destroy; unset -nocomplain r done body bytes released} -result {1 error {request cancelled}}
     test stream-5 {Destroy inside body callback invalidates pending events safely} -body {
         set gone 0; set done 0
         set r [::trequests::post $url -async -data hello -timeout 2000 \
@@ -58,7 +58,7 @@ try {
         vwait gone
         update
         list $done [llength [info commands $r]]
-    } -result {0 0}
+    } -cleanup {unset -nocomplain r gone done session} -result {0 0}
     test stream-6 {Destroying the session from a body callback is safe} -body {
         set gone 0; set done 0
         set session [::trequests::session]
@@ -67,7 +67,7 @@ try {
         vwait gone
         update
         list $done [llength [info commands $r]]
-    } -result {0 0}
+    } -cleanup {unset -nocomplain r gone done session} -result {0 0}
     test stream-7 {Streaming options reject incompatible modes} -body {
         list [catch {::trequests::post $url -callback_data streamData}] \
              [catch {::trequests::post $url -async -buffer_response false}] \
@@ -79,7 +79,7 @@ try {
             -callback_data {apply {{bytes request} {$request cancel}}} -callback streamDone]
         vwait done
         list $done [$r state] [$r error]
-    } -cleanup {$r destroy} -result {1 error {request cancelled}}
+    } -cleanup {$r destroy; unset -nocomplain r done body bytes released} -result {1 error {request cancelled}}
 } finally {
     close $server
     unset -nocomplain ::env(NO_PROXY)
