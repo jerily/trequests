@@ -205,8 +205,7 @@ Release validation: 198 offline tests pass on both Tcl 8.6 and 9.1 (one
 feature-dependent test is skipped); the same suite passes under
 AddressSanitizer/UBSan with leak detection disabled. Static embedding is also
 validated through the OpenAI Tcl client suite.
-The root `ttrek.json` contains the 1.2.0 package recipe. JSON copyright notices
-use `_copyright` to preserve valid JSON syntax.
+The root `ttrek.json` contains the 1.2.0 package recipe.
 
 ### Response handle
 
