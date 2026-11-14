@@ -1,9 +1,11 @@
 /**
  * Copyright Jerily LTD. All Rights Reserved.
- * SPDX-FileCopyrightText: 2024 Neofytos Dimitriou (neo@jerily.cy)
+ * SPDX-FileCopyrightText: 2026 Neofytos Dimitriou (neo@jerily.cy)
  * SPDX-License-Identifier: MIT.
  */
 
+#include <limits.h>
+#include <stdint.h>
 #include "testing.h"
 #include "treqRequest.h"
 #include "treqSession.h"
@@ -46,7 +48,7 @@ void treq_RequestScheduleCallback(treq_RequestType *req) {
 
     DBG2(printf("enter"));
 
-    if (req->callback == NULL) {
+    if (req->callback == NULL || req->callback_event != NULL) {
         DBG2(printf("return: ok (request has no callback)"));
         return;
     }
@@ -384,41 +386,98 @@ done:
     return 0;
 }
 
-static size_t treq_write_callback(const char *ptr, size_t size, size_t nmemb, void *userdata) {
+/* Data callbacks are queued outside libcurl. The current event remains linked
+ * while Tcl runs so destroying a request/session safely invalidates it too. */
+struct treq_DataEvent {
+    Tcl_Event header;
+    treq_RequestType *request;
+    treq_DataEvent *next;
+    Tcl_Obj *bytes;
+    size_t size;
+};
 
-    treq_RequestType *req = (treq_RequestType *)userdata;
-    size = size * nmemb;
-
-    DBG2(printf("enter; existing buffer size: %" TCL_SIZE_MODIFIER "d; add chunk size: %zu", req->content_size, size));
-
-    if (size > 0) {
-
-        if (req->content_size == 0) {
-            req->content = attemptckalloc(size);
-            if (req->content == NULL) {
-                goto error;
-            }
-        } else {
-            char *tmp = attemptckrealloc(req->content, req->content_size + size);
-            if (tmp == NULL) {
-                goto error;
-            }
-            req->content = tmp;
+void treq_RequestCancel(treq_RequestType *req, Tcl_Obj *error) {
+    Tcl_IncrRefCount(error);
+    if (req->state == TREQ_REQUEST_CREATED || req->state == TREQ_REQUEST_INPROGRESS ||
+            req->data_events != NULL || req->callback_event != NULL) {
+        req->data_failed = 1;
+        treq_RequestSetError(req, error);
+        if (req->pool != NULL) {
+            treq_PoolRemoveRequest(req);
         }
-
-        memcpy(&req->content[req->content_size], ptr, size);
-        req->content_size += size;
-
+        treq_RequestScheduleCallback(req);
     }
+    Tcl_DecrRefCount(error);
+}
 
+static int treq_DataEventProc(Tcl_Event *evPtr, int flags) {
+    treq_DataEvent *event = (treq_DataEvent *)evPtr;
+    if (!(flags & TCL_FILE_EVENTS)) return 0;
+    treq_RequestType *req = event->request;
+    if (req != NULL && !req->data_failed && !Tcl_InterpDeleted(req->interp)) {
+        Tcl_Interp *interp = req->interp;
+        Tcl_Obj *cmd = Tcl_DuplicateObj(req->callback_data);
+        Tcl_IncrRefCount(cmd);
+        Tcl_ListObjAppendElement(NULL, cmd, event->bytes);
+        Tcl_ListObjAppendElement(NULL, cmd, req->cmd_name);
+        Tcl_Preserve(interp);
+        Tcl_InterpState saved = Tcl_SaveInterpState(interp, TCL_OK);
+        int rc = Tcl_EvalObjEx(interp, cmd, TCL_EVAL_GLOBAL);
+        if (rc != TCL_OK && event->request != NULL) {
+            treq_RequestCancel(event->request, Tcl_GetObjResult(interp));
+        }
+        Tcl_DecrRefCount(cmd);
+        Tcl_RestoreInterpState(interp, saved);
+        Tcl_Release(interp);
+    }
+    req = event->request;
+    if (req != NULL) {
+        treq_DataEvent **link = &req->data_events;
+        while (*link != event) link = &(*link)->next;
+        *link = event->next;
+        req->queued_bytes -= event->size;
+    }
+    Tcl_DecrRefCount(event->bytes);
+    return 1;
+}
+
+static size_t treq_write_callback(const char *ptr, size_t size, size_t nmemb, void *userdata) {
+    treq_RequestType *req = (treq_RequestType *)userdata;
+    size *= nmemb;
+    if (size == 0) return 0;
+    if (req->data_failed) return CURL_WRITEFUNC_ERROR;
+
+    if (req->callback_data != NULL) {
+        /* Bound pending callback data even if a peer sends faster than Tcl can
+         * consume it. Abort explicitly instead of silently dropping bytes. */
+        if (size > 1048576 || req->queued_bytes > 1048576 - size) {
+            treq_RequestSetError(req, Tcl_NewStringObj("stream callback queue exceeded 1 MiB", -1));
+            return CURL_WRITEFUNC_ERROR;
+        }
+        treq_DataEvent *event = ckalloc(sizeof(*event));
+        event->header.proc = treq_DataEventProc;
+        event->request = req;
+        event->next = req->data_events;
+        event->size = size;
+        event->bytes = Tcl_NewByteArrayObj((const unsigned char *)ptr, (Tcl_Size)size);
+        Tcl_IncrRefCount(event->bytes);
+        req->data_events = event;
+        req->queued_bytes += size;
+        Tcl_QueueEvent((Tcl_Event *)event, TCL_QUEUE_TAIL);
+    }
+    if (req->buffer_response) {
+        if (size > (size_t)((sizeof(Tcl_Size) == sizeof(int)) ? INT_MAX : PTRDIFF_MAX) - (size_t)req->content_size) goto error;
+        char *tmp = req->content_size == 0 ? attemptckalloc(size) :
+            attemptckrealloc(req->content, req->content_size + size);
+        if (tmp == NULL) goto error;
+        req->content = tmp;
+        memcpy(req->content + req->content_size, ptr, size);
+        req->content_size += (Tcl_Size)size;
+    }
     return size;
-
 error:
-
-    treq_RequestSetError(req, Tcl_ObjPrintf("failed to allocate %ld additional bytes in"
-        " the output buffer, current output buffer size is %ld", (long)size, (long)req->content_size));
+    treq_RequestSetError(req, Tcl_NewStringObj("failed to allocate response buffer", -1));
     return CURL_WRITEFUNC_ERROR;
-
 }
 
 void treq_RequestRun(treq_RequestType *req) {
@@ -708,6 +767,7 @@ treq_RequestType *treq_RequestInit(void) {
 
     treq_RequestType *req = ckalloc(sizeof(treq_RequestType));
     memset(req, 0, sizeof(treq_RequestType));
+    req->buffer_response = 1;
 
     req->curl_easy = curl_easy_init();
     if (req->curl_easy == NULL) {
@@ -742,9 +802,28 @@ error:
 
 }
 
+static int treq_DeleteDataEvent(Tcl_Event *evPtr, ClientData clientData) {
+    if (evPtr->proc != treq_DataEventProc) return 0;
+    treq_DataEvent *event = (treq_DataEvent *)evPtr;
+    if (event->request != (treq_RequestType *)clientData) return 0;
+    treq_RequestType *req = event->request;
+    treq_DataEvent **link = &req->data_events;
+    while (*link != event) link = &(*link)->next;
+    *link = event->next;
+    Tcl_DecrRefCount(event->bytes);
+    return 1;
+}
+
 void treq_RequestFree(treq_RequestType *req) {
 
     DBG2(printf("enter; req: %p", (void *)req));
+
+    Tcl_DeleteEvents(treq_DeleteDataEvent, req);
+    for (treq_DataEvent *event = req->data_events; event != NULL; event = event->next) {
+        event->request = NULL;
+    }
+    /* Prevent pool removal from scheduling a completion for a deleted handle. */
+    req->state = TREQ_REQUEST_ERROR;
 
     // If we have a callback event bound to this request, make sure
     // the callback event does not use a freed request.
@@ -787,6 +866,7 @@ void treq_RequestFree(treq_RequestType *req) {
     Tcl_FreeObject(req->headers);
     Tcl_FreeObject(req->callback);
     Tcl_FreeObject(req->callback_debug);
+    Tcl_FreeObject(req->callback_data);
     Tcl_FreeObject(req->custom_method);
     Tcl_FreeObject(req->error);
     Tcl_FreeObject(req->content_type);

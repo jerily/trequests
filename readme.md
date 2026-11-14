@@ -1,3 +1,11 @@
+<!--
+/**
+ * Copyright Jerily LTD. All Rights Reserved.
+ * SPDX-FileCopyrightText: 2026 Neofytos Dimitriou (neo@jerily.cy)
+ * SPDX-License-Identifier: MIT.
+ */
+-->
+
 # trequests
 
 TCL/C extension that provides an interface to the [libcurl](https://curl.se/libcurl/) C library. It contains functions for making synchronous and asynchronous HTTP/HTTPS requests, specifying parameters for GET/POST request types, working with response data and creating sessions in which requests share parameters, TCP connections, cookies.
@@ -151,6 +159,55 @@ Asynchronous requests schedule execution after validating their arguments. To ru
 
 When an asynchronous request is completed with either a success or an error and a script is specified using the **-callback** option, then the script will be run. It must accept a single argument, which is the response handle. The exact state of the request and response data can be retrieved using this handle.
 
+### Streaming response bodies (1.2.0)
+
+`-callback_data commandPrefix` delivers each body chunk as a Tcl byte array,
+followed by the response handle. It requires `-async`; the existing `-callback`
+still runs once at completion. Data callbacks run through Tcl's event queue,
+outside libcurl, in arrival order before completion. They can cancel or destroy
+the request (or its session). An error from a data callback stops the request
+and becomes its `$handle error`. Remaining data callbacks are suppressed.
+
+`-buffer_response false` disables body retention and requires `-callback_data`.
+The default is true, preserving existing `$handle content`/`text` behavior.
+Neither option is inherited from sessions; set it on each request.
+
+```tcl
+package require trequests 1.2
+proc received {bytes response} {
+    # bytes may end inside a UTF-8 character or application-level message.
+    puts "Received [string length $bytes] bytes"
+}
+proc completed {response} {set ::done 1}
+set done 0
+set response [::trequests::get https://example.com/stream -async \
+    -callback_data received -buffer_response false -callback completed]
+try {
+    vwait done
+    if {[$response state] eq "error"} {error [$response error]}
+    puts [$response status_code]
+} finally {$response destroy}
+```
+
+`$handle cancel` aborts the transfer and schedules completion once with state
+`error` and message `request cancelled`. Destroying a handle suppresses its
+remaining callbacks. Keep callbacks short and avoid nested event loops. Pending
+body callbacks are capped at 1 MiB per request; overflow aborts explicitly rather
+than losing data or allocating an unbounded queue. Applications must frame and
+decode bytes themselves; the HTTP client does not assume SSE or JSON.
+
+Offline `stream.test` uses a gated local server: the server cannot finish until
+the body callback releases it. It also exercises binary data, buffering,
+callback errors, cancellation, and request/session destruction during callbacks.
+Build and test separately against Tcl 8.6 and Tcl 9. Static builds continue to
+provide `Trequests_Init`; no OpenAI-specific behavior is part of this extension.
+Release validation: 198 offline tests pass on both Tcl 8.6 and 9.1 (one
+feature-dependent test is skipped); the same suite passes under
+AddressSanitizer/UBSan with leak detection disabled. Static embedding is also
+validated through the OpenAI Tcl client suite.
+The root `ttrek.json` contains the 1.2.0 package recipe. JSON copyright notices
+use `_copyright` to preserve valid JSON syntax.
+
 ### Response handle
 
 The response handle can be used to retrieve the request state, status, and other data associated with the request sent and the response received.
@@ -165,6 +222,7 @@ The following commands exist for each response handle:
 * **$handle content** - returns HTTP response body as is
 * **$handle encoding ?encoding?** - returns or sets the encoding for HTTP body. By default, trequests attempts to automatically detect the encoding by analyzing the HTTP response header `Content-Type:`.
 * **$handle text** - returns HTTP response body decoded using the response encoding
+* **$handle cancel** - cancels an outstanding request and schedules its completion callback with an error.
 * **$handle destroy** - destroys the request handle and frees all asociated memory structures
 
 ### Sessions

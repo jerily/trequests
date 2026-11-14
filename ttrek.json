@@ -1,0 +1,64 @@
+{
+  "_copyright": "/**\n * Copyright Jerily LTD. All Rights Reserved.\n * SPDX-FileCopyrightText: 2026 Neofytos Dimitriou (neo@jerily.cy)\n * SPDX-License-Identifier: MIT.\n */",
+  "name": "trequests",
+  "version": "1.2.0",
+  "license": "MIT",
+  "description": "HTTP and HTTPS client for Tcl using curl, with asynchronous body streaming.",
+  "url": "https://github.com/jerily/trequests",
+  "tags": [
+    "tcl",
+    "http",
+    "https",
+    "client",
+    "streaming"
+  ],
+  "scripts": {},
+  "dependencies": {
+    "curl": "^8.7.1",
+    "tcl": ">=8.6.14"
+  },
+  "devDependencies": {},
+  "build": {
+    "default": [
+      {
+        "cmd": "download",
+        "url": "https://github.com/jerily/trequests/archive/refs/tags/v1.2.0.tar.gz"
+      },
+      {
+        "cmd": "unpack"
+      },
+      {
+        "cmd": "cd"
+      },
+      {
+        "cmd": "cmake_config",
+        "options": [
+          {
+            "name": "TCL_LIBRARY_DIR",
+            "value": "$INSTALL_DIR/lib"
+          },
+          {
+            "name": "TCL_INCLUDE_PATH",
+            "value": "$INSTALL_DIR/include"
+          },
+          {
+            "name": "BUILD_TESTING",
+            "value": "OFF"
+          },
+          {
+            "name": "BUILD_SHARED_LIBS",
+            "value": "OFF",
+            "if": "+static"
+          }
+        ]
+      },
+      {
+        "cmd": "make",
+        "parallel": true
+      },
+      {
+        "cmd": "make_install"
+      }
+    ]
+  }
+}
