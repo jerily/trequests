@@ -1,0 +1,88 @@
+# /**
+#  * Copyright Jerily LTD. All Rights Reserved.
+#  * SPDX-FileCopyrightText: 2026 Neofytos Dimitriou (neo@jerily.cy)
+#  * SPDX-License-Identifier: MIT.
+#  */
+
+package require tcltest
+namespace import ::tcltest::test
+package require trequests 1.2
+set server [open [list | [info nameofexecutable] [file join [file dirname [info script]] fixtures echo-server.tcl]] r+]
+gets $server port
+set url http://127.0.0.1:$port
+set oldProxy [array get ::env NO_PROXY]
+set ::env(NO_PROXY) 127.0.0.1,localhost
+proc streamDone {request} {incr ::done}
+proc streamData {bytes request} {
+    append ::body $bytes
+    if {!$::released} {
+        set ::released 1
+        set r [::trequests::post $::url/release -timeout 2000]
+        try {if {[$r state] eq "error"} {error [$r error]}} finally {$r destroy}
+    }
+}
+try {
+    test stream-1 {Body callback runs before the server finishes and precedes completion} -body {
+        set done 0; set body {}; set released 0
+        set r [::trequests::post $url/gate -async -timeout 5000 \
+            -callback_data streamData -callback streamDone -buffer_response false]
+        vwait done
+        list $body $released $done [$r content] [$r state]
+    } -cleanup {$r destroy; unset -nocomplain r done body bytes released} -result {onetwo 1 1 {} done}
+    test stream-2 {Default response buffering and raw byte delivery are preserved} -body {
+        set done 0; set body {}
+        set bytes [binary format H* 00017f80feff]
+        set r [::trequests::post $url -async -timeout 2000 -data_binary $bytes \
+            -callback_data {apply {{bytes request} {append ::body $bytes}}} -callback streamDone]
+        vwait done
+        list [binary encode hex $body] [binary encode hex [$r content]]
+    } -cleanup {$r destroy; unset -nocomplain r done body bytes released} -result {00017f80feff 00017f80feff}
+    test stream-3 {Callback errors stop delivery and reach the completion callback} -body {
+        set done 0
+        set r [::trequests::post $url -async -data hello -timeout 2000 \
+            -callback_data {apply {{bytes request} {error "consumer failed"}}} -callback streamDone]
+        vwait done
+        list $done [$r state] [$r error]
+    } -cleanup {$r destroy; unset -nocomplain r done body bytes released} -result {1 error {consumer failed}}
+    test stream-4 {Cancel before dispatch completes once} -body {
+        set done 0
+        set r [::trequests::post $url -async -data hello -timeout 2000 -callback streamDone]
+        $r cancel
+        vwait done
+        list $done [$r state] [$r error]
+    } -cleanup {$r destroy; unset -nocomplain r done body bytes released} -result {1 error {request cancelled}}
+    test stream-5 {Destroy inside body callback invalidates pending events safely} -body {
+        set gone 0; set done 0
+        set r [::trequests::post $url -async -data hello -timeout 2000 \
+            -callback_data {apply {{bytes request} {$request destroy; set ::gone 1}}} -callback streamDone]
+        vwait gone
+        update
+        list $done [llength [info commands $r]]
+    } -cleanup {unset -nocomplain r gone done session} -result {0 0}
+    test stream-6 {Destroying the session from a body callback is safe} -body {
+        set gone 0; set done 0
+        set session [::trequests::session]
+        set r [$session post $url -async -data hello -timeout 2000 \
+            -callback_data {apply {{bytes request} {$::session destroy; set ::gone 1}}} -callback streamDone]
+        vwait gone
+        update
+        list $done [llength [info commands $r]]
+    } -cleanup {unset -nocomplain r gone done session} -result {0 0}
+    test stream-7 {Streaming options reject incompatible modes} -body {
+        list [catch {::trequests::post $url -callback_data streamData}] \
+             [catch {::trequests::post $url -async -buffer_response false}] \
+             [catch {::trequests::post $url -async -callback_data {}}]
+    } -result {1 1 1}
+    test stream-8 {Cancel inside a body callback finishes once without destroying the handle} -body {
+        set done 0
+        set r [::trequests::post $url -async -data hello -timeout 2000 \
+            -callback_data {apply {{bytes request} {$request cancel}}} -callback streamDone]
+        vwait done
+        list $done [$r state] [$r error]
+    } -cleanup {$r destroy; unset -nocomplain r done body bytes released} -result {1 error {request cancelled}}
+} finally {
+    close $server
+    unset -nocomplain ::env(NO_PROXY)
+    array set ::env $oldProxy
+}
+::tcltest::cleanupTests
