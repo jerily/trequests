@@ -1,6 +1,6 @@
 /**
  * Copyright Jerily LTD. All Rights Reserved.
- * SPDX-FileCopyrightText: 2024 Neofytos Dimitriou (neo@jerily.cy)
+ * SPDX-FileCopyrightText: 2026 Neofytos Dimitriou (neo@jerily.cy)
  * SPDX-License-Identifier: MIT.
  */
 
@@ -75,6 +75,8 @@ typedef struct treq_RequestOptions {
     treq_optionBooleanType allow_redirects;
     treq_optionObjectType callback;
     treq_optionObjectType callback_debug;
+    treq_optionObjectType callback_data;
+    treq_optionBooleanType buffer_response;
     treq_optionAuthSchemeType auth_scheme;
     treq_optionObjectType auth_token;
     treq_optionAuthType auth;
@@ -106,6 +108,8 @@ typedef struct treq_RequestOptions {
     .verbose =                { "-verbose",               -1, NULL, 0 }, \
     .allow_redirects =        { "-allow_redirects",       -1, NULL, 0 }, \
     .callback =               { "-callback",              -1, NULL }, \
+    .callback_data =          { "-callback_data",         -1, NULL }, \
+    .buffer_response =        { "-buffer_response",       -1, NULL, 1 }, \
     .callback_debug =         { "-callback_debug",        -1, NULL }, \
     .auth_scheme =            { "-auth_scheme",           -1, NULL, -1 }, \
     .auth_token =             { "-auth_token",            -1, NULL }, \
@@ -665,6 +669,8 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType metho
     if (treq_ValidateOptionListOfDicts(interp, &opt->headers) != TCL_OK                                 ||
         treq_ValidateOptionListOfDicts(interp, &opt->form) != TCL_OK                                    ||
         treq_ValidateOptionObjectList(interp, &opt->callback, 1) != TCL_OK                              ||
+        treq_ValidateOptionObjectList(interp, &opt->callback_data, 0) != TCL_OK ||
+        treq_ValidateOptionBoolean(interp, &opt->buffer_response) != TCL_OK ||
         treq_ValidateOptionObjectList(interp, &opt->callback_debug, 1) != TCL_OK                        ||
         treq_ValidateOptionObjectList(interp, (treq_optionObjectType *)&opt->auth_scheme, 0) != TCL_OK  ||
         treq_ValidateOptionCommon(interp, (treq_optionCommonType *)&opt->auth_token) == TCL_ERROR       ||
@@ -795,6 +801,16 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType metho
 
     }
 
+    if (isOptionExists(opt->callback_data) && !opt->async) {
+        SetResult("-callback_data requires -async");
+        return TCL_ERROR;
+    }
+    if (isOptionExists(opt->buffer_response) && !opt->buffer_response.value &&
+            !isOptionExists(opt->callback_data)) {
+        SetResult("-buffer_response false requires -callback_data");
+        return TCL_ERROR;
+    }
+
     if (opt->async) {
 
         if (opt->simple) {
@@ -879,6 +895,7 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
         { "encoding",    treq_RequestGetEncoding,   2, 3, "?encoding?" },
         { "status_code", treq_RequestGetStatusCode, 2, 2, NULL         },
         { "state",       treq_RequestGetState,      2, 2, NULL         },
+        { "cancel",      NULL,                      2, 2, NULL         },
         { "destroy",     NULL,                      2, 2, NULL         },
         { NULL }
     };
@@ -891,7 +908,7 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
 #endif
         cmdText, cmdContent, cmdError, cmdHeaders, cmdHeader, cmdEncoding,
         cmdStatusCode, cmdState,
-        cmdDestroy
+        cmdCancel, cmdDestroy
     };
 
     int command;
@@ -911,6 +928,9 @@ static int treq_RequestHandleCmd(ClientData clientData, Tcl_Interp *interp, int 
     Tcl_Obj *result = NULL;
 
     switch ((enum commands) command) {
+    case cmdCancel:
+        treq_RequestCancel(request, Tcl_NewStringObj("request cancelled", -1));
+        break;
     case cmdDestroy:
         Tcl_DeleteCommandFromToken(request->interp, request->cmd_token);
         break;
@@ -1008,6 +1028,8 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
         { TCL_ARGV_CONSTANT, "-simple",            INT2PTR(1),  &opt.simple,                NULL, NULL },
         { TCL_ARGV_FUNC, "-callback",              object_arg,  &opt.callback,              NULL, NULL },
         { TCL_ARGV_FUNC, "-callback_debug",        object_arg,  &opt.callback_debug,        NULL, NULL },
+        { TCL_ARGV_FUNC, "-callback_data", object_arg, &opt.callback_data, NULL, NULL },
+        { TCL_ARGV_FUNC, "-buffer_response", boolean_arg, &opt.buffer_response, NULL, NULL },
         { TCL_ARGV_FUNC, "-auth",                  object_arg,  &opt.auth,                  NULL, NULL },
         { TCL_ARGV_FUNC, "-auth_token",            object_arg,  &opt.auth_token,            NULL, NULL },
         { TCL_ARGV_FUNC, "-auth_scheme",           object_arg,  &opt.auth_scheme,           NULL, NULL },
@@ -1066,6 +1088,9 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
             opt.callback.value :
             GetSessionProperty(callback, NULL));
     }
+
+    SetRequestProperty(request->callback_data, opt.callback_data.value);
+    request->buffer_response = isOptionExists(opt.buffer_response) ? opt.buffer_response.value : 1;
 
     SetRequestProperty(request->callback_debug, isOptionExists(opt.callback_debug) ?
         opt.callback_debug.value :

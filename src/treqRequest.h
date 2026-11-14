@@ -1,6 +1,6 @@
 /**
  * Copyright Jerily LTD. All Rights Reserved.
- * SPDX-FileCopyrightText: 2024 Neofytos Dimitriou (neo@jerily.cy)
+ * SPDX-FileCopyrightText: 2026 Neofytos Dimitriou (neo@jerily.cy)
  * SPDX-License-Identifier: MIT.
  */
 #ifndef TREQUESTS_TREQREQUEST_H
@@ -28,6 +28,7 @@ typedef enum {
 } treq_RequestStateType;
 
 typedef struct treq_RequestEvent treq_RequestEvent;
+typedef struct treq_DataEvent treq_DataEvent;
 
 struct treq_RequestType {
 
@@ -79,6 +80,11 @@ struct treq_RequestType {
     Tcl_Obj *callback;
     treq_RequestEvent *callback_event;
     int async;
+    Tcl_Obj *callback_data;
+    int buffer_response;
+    int data_failed;
+    size_t queued_bytes;
+    treq_DataEvent *data_events;
 
     Tcl_Obj *callback_debug;
 
@@ -126,6 +132,7 @@ void treq_RequestSetError(treq_RequestType *req, Tcl_Obj *error);
 void treq_RequestSetEncoding(treq_RequestType *req, Tcl_Encoding encoding);
 
 void treq_RequestScheduleCallback(treq_RequestType *req);
+void treq_RequestCancel(treq_RequestType *req, Tcl_Obj *error);
 
 const char *treq_RequestGetMethodName(treq_RequestMethodType method);
 
