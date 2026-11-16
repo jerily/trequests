@@ -77,6 +77,8 @@ typedef struct treq_RequestOptions {
     treq_optionObjectType callback_debug;
     treq_optionObjectType callback_data;
     treq_optionBooleanType buffer_response;
+    treq_optionBooleanType path_as_is;
+    treq_optionBooleanType decode_content;
     treq_optionAuthSchemeType auth_scheme;
     treq_optionObjectType auth_token;
     treq_optionAuthType auth;
@@ -110,6 +112,8 @@ typedef struct treq_RequestOptions {
     .callback =               { "-callback",              -1, NULL }, \
     .callback_data =          { "-callback_data",         -1, NULL }, \
     .buffer_response =        { "-buffer_response",       -1, NULL, 1 }, \
+    .path_as_is =             { "-path_as_is",            -1, NULL, 0 }, \
+    .decode_content =         { "-decode_content",        -1, NULL, 1 }, \
     .callback_debug =         { "-callback_debug",        -1, NULL }, \
     .auth_scheme =            { "-auth_scheme",           -1, NULL, -1 }, \
     .auth_token =             { "-auth_token",            -1, NULL }, \
@@ -671,6 +675,8 @@ static int treq_ValidateOptions(Tcl_Interp *interp, treq_RequestMethodType metho
         treq_ValidateOptionObjectList(interp, &opt->callback, 1) != TCL_OK                              ||
         treq_ValidateOptionObjectList(interp, &opt->callback_data, 0) != TCL_OK ||
         treq_ValidateOptionBoolean(interp, &opt->buffer_response) != TCL_OK ||
+        treq_ValidateOptionBoolean(interp, &opt->path_as_is) != TCL_OK ||
+        treq_ValidateOptionBoolean(interp, &opt->decode_content) != TCL_OK ||
         treq_ValidateOptionObjectList(interp, &opt->callback_debug, 1) != TCL_OK                        ||
         treq_ValidateOptionObjectList(interp, (treq_optionObjectType *)&opt->auth_scheme, 0) != TCL_OK  ||
         treq_ValidateOptionCommon(interp, (treq_optionCommonType *)&opt->auth_token) == TCL_ERROR       ||
@@ -1030,6 +1036,8 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
         { TCL_ARGV_FUNC, "-callback_debug",        object_arg,  &opt.callback_debug,        NULL, NULL },
         { TCL_ARGV_FUNC, "-callback_data", object_arg, &opt.callback_data, NULL, NULL },
         { TCL_ARGV_FUNC, "-buffer_response", boolean_arg, &opt.buffer_response, NULL, NULL },
+        { TCL_ARGV_FUNC, "-path_as_is", boolean_arg, &opt.path_as_is, NULL, NULL },
+        { TCL_ARGV_FUNC, "-decode_content", boolean_arg, &opt.decode_content, NULL, NULL },
         { TCL_ARGV_FUNC, "-auth",                  object_arg,  &opt.auth,                  NULL, NULL },
         { TCL_ARGV_FUNC, "-auth_token",            object_arg,  &opt.auth_token,            NULL, NULL },
         { TCL_ARGV_FUNC, "-auth_scheme",           object_arg,  &opt.auth_scheme,           NULL, NULL },
@@ -1091,6 +1099,8 @@ static int treq_CreateNewRequest(Tcl_Interp *interp, treq_RequestMethodType meth
 
     SetRequestProperty(request->callback_data, opt.callback_data.value);
     request->buffer_response = isOptionExists(opt.buffer_response) ? opt.buffer_response.value : 1;
+    request->path_as_is = isOptionExists(opt.path_as_is) ? opt.path_as_is.value : 0;
+    request->decode_content = isOptionExists(opt.decode_content) ? opt.decode_content.value : 1;
 
     SetRequestProperty(request->callback_debug, isOptionExists(opt.callback_debug) ?
         opt.callback_debug.value :

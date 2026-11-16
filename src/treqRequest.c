@@ -541,7 +541,10 @@ void treq_RequestRun(treq_RequestType *req) {
 
     req->curl_url = curl_url();
 
-    safe_curl_url_set(CURLUPART_URL, Tcl_GetString(req->url), CURLU_DEFAULT_SCHEME);
+    /* Preserve the parsed path without CURLOPT_PATH_AS_IS, which conflicts with SigV4. */
+    safe_curl_url_set(CURLUPART_URL, Tcl_GetString(req->url),
+        CURLU_DEFAULT_SCHEME | (req->path_as_is ? CURLU_PATH_AS_IS : 0));
+    safe_curl_easy_setopt(CURLOPT_HTTP_CONTENT_DECODING, req->decode_content ? 1L : 0L);
 
     if (req->querystring != NULL && Tcl_GetStringLengthFromObj(req->querystring) != 0) {
         DBG2(printf("querystring: [%s]", Tcl_GetString(req->querystring)));

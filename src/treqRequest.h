@@ -82,6 +82,8 @@ struct treq_RequestType {
     int async;
     Tcl_Obj *callback_data;
     int buffer_response;
+    int path_as_is;
+    int decode_content;
     int data_failed;
     size_t queued_bytes;
     treq_DataEvent *data_events;
