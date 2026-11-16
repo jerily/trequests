@@ -1,15 +1,17 @@
-# /**
-#  * Copyright Jerily LTD. All Rights Reserved.
-#  * SPDX-FileCopyrightText: 2026 Neofytos Dimitriou (neo@jerily.cy)
-#  * SPDX-License-Identifier: MIT.
-#  */
+# 
+# Copyright Jerily LTD. All Rights Reserved.
+# SPDX-FileCopyrightText: 2026 Neofytos Dimitriou (neo@jerily.cy)
+# SPDX-License-Identifier: MIT.
+# 
 
 # Separate process so synchronous libcurl requests cannot block the server loop.
+# Accept a connection without blocking other test requests.
 proc accept {channel address port} {
     chan configure $channel -blocking 0 -translation binary
     set ::input($channel) {}
     fileevent $channel readable [list receive $channel]
 }
+# Read one HTTP request and serve binary, path or compression fixtures.
 proc receive {channel} {
     append ::input($channel) [read $channel]
     if {[eof $channel]} {
@@ -40,7 +42,14 @@ proc receive {channel} {
     set body [string range $::input($channel) [expr {$end + 4}] end]
     if {[string length $body] < $length} {return}
     set body [string range $body 0 [expr {$length - 1}]]
-    puts -nonewline $channel "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: $length\r\nConnection: close\r\n\r\n"
+    set extra {}
+    if {[string match /path/* $path]} {set body $path}
+    if {$path eq "/gzip"} {
+        set body [zlib gzip $body]
+        set extra "Content-Encoding: gzip\r\n"
+    }
+    set length [string length $body]
+    puts -nonewline $channel "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n${extra}Content-Length: $length\r\nConnection: close\r\n\r\n"
     puts -nonewline $channel $body
     close $channel
     unset ::input($channel)

@@ -274,3 +274,12 @@ When a session is no longer needed, it should be destroyed:
 * **$handle destroy** - destroys the session handle, all request belong to this session and frees all asociated memory structures
 
 
+
+### Exact paths and encoded bodies (1.3.0)
+
+`-path_as_is true` preserves literal `/./` and `/../` segments in the request
+path, including when parsing the URL. `-decode_content false` returns encoded
+response bytes unchanged even when the server sets `Content-Encoding: gzip`.
+Both are per-request options, work with synchronous and asynchronous requests,
+and default to the existing behavior (path normalization and content decoding).
+They are useful for object storage, where the path and stored bytes are data.

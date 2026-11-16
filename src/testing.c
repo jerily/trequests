@@ -23,6 +23,7 @@ static const struct {
     { "CURLOPT_HTTPGET",           TREQ_OPT_LONG    },
     { "CURLOPT_POST",              TREQ_OPT_LONG    },
     { "CURLOPT_UPLOAD",            TREQ_OPT_LONG    },
+    { "CURLOPT_HTTP_CONTENT_DECODING", TREQ_OPT_LONG },
     { "CURLOPT_CUSTOMREQUEST",     TREQ_OPT_STRING  },
     { "CURLOPT_CURLU",             TREQ_OPT_POINTER },
     { "CURLOPT_POSTFIELDSIZE",     TREQ_OPT_LONG    },

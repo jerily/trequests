@@ -1,3 +1,9 @@
+# 
+# Copyright Jerily LTD. All Rights Reserved.
+# SPDX-FileCopyrightText: 2026 Neofytos Dimitriou (neo@jerily.cy)
+# SPDX-License-Identifier: MIT.
+# 
+
 package require tcltest
 namespace import -force ::tcltest::test
 package require trequests
@@ -31,6 +37,36 @@ try {
         vwait done
         try {list [$response status_code] [binary encode hex [$response content]]} finally {$response destroy}
     } -cleanup {unset -nocomplain data done response} -result {200 0080ff61}
+    test exact-path-1 {preserve literal dot segments with and without SigV4} -body {
+        set out {}
+        foreach opts [list {} {-path_as_is true} {-path_as_is true -auth {test test} -auth_aws_sigv4 {aws amz us-east-1 s3}}] {
+            set r [::trequests::get $url/path/a/../b {*}$opts -timeout 2000]
+            try {lappend out [$r content]} finally {$r destroy}
+        }
+        set out
+    } -result {/path/b /path/a/../b /path/a/../b}
+    test encoded-body-1 {content decoding can be disabled for stored gzip bytes} -body {
+        set bytes [binary format H* 00ff80]
+        set out {}
+        foreach decode {true false} {
+            set r [::trequests::put $url/gzip -data_binary $bytes -decode_content $decode -timeout 2000]
+            try {
+                set body [$r content]
+                if {!$decode} {set body [zlib gunzip $body]}
+                lappend out [binary encode hex $body]
+            } finally {$r destroy}
+        }
+        set out
+    } -result {00ff80 00ff80}
+    test encoded-body-2 {asynchronous requests retain exact paths and encoded bytes} -body {
+        set done 0
+        set r [::trequests::put $url/gzip -async -data_binary abc -decode_content false -path_as_is true -timeout 2000 -callback {apply {{request} {set ::done 1}}}]
+        vwait done
+        try {zlib gunzip [$r content]} finally {$r destroy}
+    } -result abc
+    test exact-options-1 {invalid booleans are rejected before transfer} -body {
+        list [catch {::trequests::get $url -path_as_is maybe}] [catch {::trequests::get $url -decode_content maybe}]
+    } -result {1 1}
 } finally {
     close $server
     unset -nocomplain ::env(NO_PROXY)
